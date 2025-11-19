@@ -572,7 +572,7 @@ app.get("/:event_code/photos", async (req, res) => {
               .map(
                 (photo) => `
             <div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-300">
-              <div class="aspect-square relative group cursor-pointer" onclick="openModal('${
+              <div class="aspect-square relative group cursor-pointer m-2 border rounded-lg overflow-hidden" onclick="openModal('${
                 photo.displayUrl || photo.downloadUrl
               }')">
                 ${
@@ -887,7 +887,7 @@ app.get("/:event_code/photos", async (req, res) => {
 
           // Create the image container
           const imageContainer = document.createElement('div');
-          imageContainer.className = 'aspect-square relative group cursor-pointer';
+          imageContainer.className = 'aspect-square relative group cursor-pointer m-2 border rounded-lg overflow-hidden';
           imageContainer.setAttribute('onclick', 'openModal(\"" + imageUrl + "\")');
 
           if (imageUrl) {
@@ -999,7 +999,7 @@ app.get("/:event_code/photos", async (req, res) => {
 
           // Create the image container
           const imageContainer = document.createElement('div');
-          imageContainer.className = 'aspect-square relative group cursor-pointer';
+          imageContainer.className = 'aspect-square relative group cursor-pointer m-2 border rounded-lg overflow-hidden';
           imageContainer.addEventListener('click', function() {
             openModal(imageUrl);
           });
