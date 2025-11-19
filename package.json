@@ -1,0 +1,25 @@
+{
+  "name": "photo-uploader-test",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.932.0",
+    "@aws-sdk/s3-request-presigner": "^3.933.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "eventsource": "^4.0.0",
+    "express": "^5.1.0",
+    "form-data": "^4.0.5",
+    "multer": "^2.0.2",
+    "node-fetch": "^3.3.2",
+    "uuid": "^13.0.0"
+  }
+}
