@@ -4,9 +4,6 @@ FROM node:22-alpine AS base
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies (dcraw for NEF → TIFF)
-RUN apk add --no-cache dcraw
-
 # Copy package files first for better Docker layer caching
 COPY package*.json ./
 
