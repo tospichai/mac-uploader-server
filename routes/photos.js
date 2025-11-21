@@ -276,7 +276,7 @@ function generateGalleryHTML(eventCode, photos, totalPhotos, pagination) {
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Photo Gallery - ${eventCode}</title>
+      <title>Foldex Photo Gallery - ${eventCode}</title>
       <script src="https://cdn.tailwindcss.com"></script>
       <style>
         .photo-grid {
@@ -320,7 +320,7 @@ function generateGalleryHTML(eventCode, photos, totalPhotos, pagination) {
     <body class="bg-gray-100 min-h-screen">
       <div class="container mx-auto px-4 py-8">
         <header class="text-center mb-8">
-          <h1 class="text-3xl font-bold text-gray-800 mb-2">Photo Gallery</h1>
+          <h1 class="text-3xl font-bold text-gray-800 mb-2">Foldex Photo Gallery</h1>
           <p class="text-gray-600">Event: <span class="font-semibold">${eventCode}</span></p>
           <p class="text-gray-500 text-sm mt-1">Total: ${totalPhotos} photos</p>
         </header>
@@ -408,7 +408,7 @@ function generateGalleryHTML(eventCode, photos, totalPhotos, pagination) {
         </div>
 
         <footer class="text-center mt-12 text-gray-500 text-sm">
-          <p>Photo Gallery Server</p>
+          <p>Foldex</p>
         </footer>
       </div>
 

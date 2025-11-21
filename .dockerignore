@@ -1,0 +1,64 @@
+# Node modules (will be reinstalled in container)
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment files (will be provided through Docker)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Test files (not needed in production)
+test-*.js
+*.test.js
+tests/
+coverage/
+
+# Documentation (not needed in container)
+README.md
+*.md
+
+# Git files
+.git
+.gitignore
+.gitattributes
+
+# IDE files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Docker files (not needed inside container)
+Dockerfile*
+docker-compose*
+.dockerignore
+
+# Logs
+logs
+*.log
+
+# Temporary files
+tmp/
+temp/
+
+# Development tools
+.nyc_output
+.eslintcache
+
+# Build artifacts (if any)
+dist/
+build/

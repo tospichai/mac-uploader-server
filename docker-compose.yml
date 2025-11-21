@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  photo-uploader:
+    build: .
+    container_name: photo-uploader-server
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      # AWS Configuration (REQUIRED)
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION:-ap-southeast-1}
+      - S3_BUCKET=${S3_BUCKET:-khai-photo}
+
+      # API Configuration
+      - EXPECTED_API_KEY=${EXPECTED_API_KEY:-your-app-api-key}
+
+      # Server Configuration
+      - PORT=${PORT:-3000}
+      - NODE_ENV=${NODE_ENV:-production}
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - photo-uploader-network
+
+networks:
+  photo-uploader-network:
+    driver: bridge
