@@ -21,7 +21,7 @@ COPY --chown=nodejs:nodejs . .
 USER nodejs
 
 # Expose port
-EXPOSE 3000
+EXPOSE 7001
 
 # Health check to verify the application is running
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
