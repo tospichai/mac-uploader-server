@@ -6,7 +6,7 @@ services:
     container_name: photo-uploader-server
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "7001:7001"
     environment:
       # AWS Configuration (REQUIRED)
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
