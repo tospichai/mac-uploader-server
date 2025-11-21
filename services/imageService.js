@@ -1,0 +1,185 @@
+import sharp from 'sharp';
+import { isDirectUploadAllowed, isNEFFile, getFileExtension } from '../utils/fileUtils.js';
+import {
+  IMAGE_MAX_WIDTH,
+  JPEG_QUALITY,
+  PROGRESSIVE_JPEG,
+  ERROR_MESSAGES
+} from '../config/constants.js';
+import { createValidationError } from '../middleware/errorHandler.js';
+import { logInfo, logError, logPerformance } from '../middleware/logger.js';
+
+/**
+ * Process image based on file type
+ * @param {Object} file - File object with buffer and mimetype
+ * @param {string} filename - Original filename
+ * @returns {Promise<Object>} - Processed image data
+ */
+export async function processImage(file, filename) {
+  const startTime = Date.now();
+
+  try {
+    if (!file || !file.buffer) {
+      throw createValidationError('Invalid file data');
+    }
+
+    logInfo(`Processing file: ${filename}`, 'ImageService');
+
+    // If it's already a supported format (jpg, jpeg, png), return as-is
+    if (isDirectUploadAllowed(filename)) {
+      logPerformance('Direct upload allowed', startTime, 'ImageService');
+      return {
+        buffer: file.buffer,
+        mimetype: file.mimetype || 'image/jpeg',
+        processed: false
+      };
+    }
+
+    // If it's NEF file, convert to JPG with optimization
+    if (isNEFFile(filename)) {
+      logInfo(`Converting NEF file: ${filename}`, 'ImageService');
+      const result = await convertNEFToJPG(file.buffer);
+      logPerformance('NEF conversion', startTime, 'ImageService');
+      return {
+        ...result,
+        processed: true,
+        originalFormat: 'NEF'
+      };
+    }
+
+    // If it's another unsupported format, try to convert to JPG
+    logInfo(`Attempting to convert unsupported file: ${filename}`, 'ImageService');
+    const result = await convertToJPG(file.buffer);
+    logPerformance('Format conversion', startTime, 'ImageService');
+    return {
+      ...result,
+      processed: true,
+      originalFormat: getFileExtension(filename)
+    };
+
+  } catch (error) {
+    logError(error, 'ImageService.processImage');
+
+    if (error.name === 'AppError') {
+      throw error;
+    }
+
+    if (isNEFFile(filename)) {
+      throw createValidationError(`${ERROR_MESSAGES.FAILED_TO_PROCESS_NEF}: ${error.message}`);
+    }
+
+    throw createValidationError(`${ERROR_MESSAGES.UNSUPPORTED_FORMAT}: ${getFileExtension(filename)}`);
+  }
+}
+
+/**
+ * Convert NEF file to JPG
+ * @param {Buffer} buffer - NEF file buffer
+ * @returns {Promise<Object>} - Converted image data
+ */
+async function convertNEFToJPG(buffer) {
+  try {
+    const processedBuffer = await sharp(buffer)
+      .resize({
+        width: IMAGE_MAX_WIDTH,
+        height: null, // auto height
+        withoutEnlargement: true // don't enlarge if smaller
+      })
+      .jpeg({
+        quality: JPEG_QUALITY,
+        progressive: PROGRESSIVE_JPEG
+      })
+      .toBuffer();
+
+    return {
+      buffer: processedBuffer,
+      mimetype: 'image/jpeg'
+    };
+  } catch (error) {
+    logError(error, 'ImageService.convertNEFToJPG');
+    throw new Error(`NEF conversion failed: ${error.message}`);
+  }
+}
+
+/**
+ * Convert any image format to JPG
+ * @param {Buffer} buffer - Image buffer
+ * @returns {Promise<Object>} - Converted image data
+ */
+async function convertToJPG(buffer) {
+  try {
+    const processedBuffer = await sharp(buffer)
+      .resize({
+        width: IMAGE_MAX_WIDTH,
+        height: null,
+        withoutEnlargement: true
+      })
+      .jpeg({
+        quality: JPEG_QUALITY,
+        progressive: PROGRESSIVE_JPEG
+      })
+      .toBuffer();
+
+    return {
+      buffer: processedBuffer,
+      mimetype: 'image/jpeg'
+    };
+  } catch (error) {
+    logError(error, 'ImageService.convertToJPG');
+    throw new Error(`Image conversion failed: ${error.message}`);
+  }
+}
+
+/**
+ * Get image metadata
+ * @param {Buffer} buffer - Image buffer
+ * @returns {Promise<Object>} - Image metadata
+ */
+export async function getImageMetadata(buffer) {
+  try {
+    const metadata = await sharp(buffer).metadata();
+    return {
+      width: metadata.width,
+      height: metadata.height,
+      format: metadata.format,
+      size: metadata.size,
+      hasAlpha: metadata.hasAlpha,
+      orientation: metadata.orientation
+    };
+  } catch (error) {
+    logError(error, 'ImageService.getImageMetadata');
+    throw new Error(`Failed to get image metadata: ${error.message}`);
+  }
+}
+
+/**
+ * Resize image to specific dimensions
+ * @param {Buffer} buffer - Image buffer
+ * @param {number} width - Target width
+ * @param {number} height - Target height (optional)
+ * @param {Object} options - Additional options
+ * @returns {Promise<Buffer>} - Resized image buffer
+ */
+export async function resizeImage(buffer, width, height = null, options = {}) {
+  try {
+    const resizeOptions = {
+      width,
+      height: height || null,
+      withoutEnlargement: options.withoutEnlargement !== false,
+      fit: options.fit || 'cover'
+    };
+
+    const processedBuffer = await sharp(buffer)
+      .resize(resizeOptions)
+      .jpeg({
+        quality: options.quality || JPEG_QUALITY,
+        progressive: options.progressive !== false
+      })
+      .toBuffer();
+
+    return processedBuffer;
+  } catch (error) {
+    logError(error, 'ImageService.resizeImage');
+    throw new Error(`Failed to resize image: ${error.message}`);
+  }
+}

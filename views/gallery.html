@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Photo Gallery - {{eventCode}}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .photo-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+      gap: 1rem;
+    }
+    @media (max-width: 640px) {
+      .photo-grid {
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: 0.5rem;
+      }
+    }
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0,0,0,0.9);
+    }
+    .modal.active {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-content {
+      max-width: 90%;
+      max-height: 90%;
+      object-fit: contain;
+    }
+    @media (min-width: 768px) {
+      .modal-content {
+        max-width: 80%;
+      }
+    }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <div class="container mx-auto px-4 py-8">
+    <header class="text-center mb-8">
+      <h1 class="text-3xl font-bold text-gray-800 mb-2">Photo Gallery</h1>
+      <p class="text-gray-600">Event: <span class="font-semibold">{{eventCode}}</span></p>
+      <p class="text-gray-500 text-sm mt-1">Total: {{totalPhotos}} photos</p>
+    </header>
+
+    <main>
+      <div class="photo-grid mb-8">
+        {{#photos}}
+        <div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-300">
+          <div class="aspect-square relative group cursor-pointer m-2 border rounded-lg overflow-hidden" onclick="openModal('{{displayUrl}}{{^displayUrl}}{{downloadUrl}}{{/displayUrl}}')">
+            {{#displayUrl}}
+            <img src="{{displayUrl}}" alt="Photo {{photoId}}"
+                class="w-full h-full object-cover"
+                loading="lazy">
+
+            <!-- Eye icon in center on hover -->
+            <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all duration-300 flex items-center justify-center pointer-events-none">
+              <svg class="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+              </svg>
+            </div>
+            {{/displayUrl}}
+            {{^displayUrl}}
+            <div class="w-full h-full bg-gray-200 flex items-center justify-center">
+              <span class="text-gray-500">No image</span>
+            </div>
+            {{/displayUrl}}
+          </div>
+          <div class="p-3 flex justify-between items-center">
+            <div class="min-w-0 flex-1 mr-2">
+              <p class="text-xs text-gray-500 truncate" title="ID: {{photoId}}">ID: {{photoId}}</p>
+              <p class="text-xs text-gray-400 truncate" title="{{lastModified}}">{{lastModified}}</p>
+            </div>
+            {{#downloadUrl}}
+            <button onclick="downloadPhoto('/{{eventCode}}/photos/{{photoId}}', '{{photoId}}')"
+              class="flex-shrink-0 text-black px-2 py-1 text-xs rounded hover:bg-gray-200 transition-colors duration-200 flex items-center">
+              <svg class="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+              </svg>
+            </button>
+            {{/downloadUrl}}
+          </div>
+        </div>
+        {{/photos}}
+      </div>
+
+      <!-- Pagination -->
+      {{#pagination}}
+      {{#hasMultiplePages}}
+      <div class="flex justify-center items-center space-x-2">
+        {{#hasPrevPage}}
+        <a href="?page={{prevPage}}"
+           class="px-3 py-2 bg-white border border-gray-300 rounded-md hover:bg-gray-50 text-sm font-medium text-gray-700">
+          Previous
+        </a>
+        {{/hasPrevPage}}
+
+        <div class="flex space-x-1">
+          {{#pages}}
+          <a href="?page={{number}}"
+             class="px-3 py-2 {{#active}}bg-blue-500 text-white{{/active}}{{^active}}bg-white border border-gray-300 text-gray-700 hover:bg-gray-50{{/active}} rounded-md text-sm font-medium">
+            {{number}}
+          </a>
+          {{/pages}}
+        </div>
+
+        {{#hasNextPage}}
+        <a href="?page={{nextPage}}"
+           class="px-3 py-2 bg-white border border-gray-300 rounded-md hover:bg-gray-50 text-sm font-medium text-gray-700">
+          Next
+        </a>
+        {{/hasNextPage}}
+      </div>
+      {{/hasMultiplePages}}
+      {{/pagination}}
+    </main>
+
+    <!-- Image Modal -->
+    <div id="imageModal" class="modal">
+      <button onclick="closeModal()" class="absolute top-4 right-4 bg-white text-gray-800 p-2 rounded-full hover:bg-gray-200 transition-colors duration-200 z-10">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+        </svg>
+      </button>
+      <img id="modalImage" class="modal-content" src="" alt="Full size image">
+    </div>
+
+    <footer class="text-center mt-12 text-gray-500 text-sm">
+      <p>Photo Gallery Server</p>
+    </footer>
+  </div>
+
+  <script>
+    // Function declarations first (hoisted)
+    function openModal(imageSrc) {
+      const modal = document.getElementById('imageModal');
+      const modalImg = document.getElementById('modalImage');
+      modal.classList.add('active');
+      modalImg.src = imageSrc;
+    }
+
+    function closeModal() {
+      const modal = document.getElementById('imageModal');
+      modal.classList.remove('active');
+    }
+
+    function showNotification(message, type = 'info') {
+      // Create notification element
+      const notification = document.createElement('div');
+      notification.className = 'fixed top-4 right-4 px-4 py-2 rounded-lg shadow-lg z-50 transform transition-all duration-300 translate-x-full';
+
+      // Set color based on type
+      switch(type) {
+        case 'success':
+          notification.classList.add('bg-green-500', 'text-white');
+          break;
+        case 'error':
+          notification.classList.add('bg-red-500', 'text-white');
+          break;
+        case 'warning':
+          notification.classList.add('bg-yellow-500', 'text-white');
+          break;
+        default:
+          notification.classList.add('bg-blue-500', 'text-white');
+      }
+
+      notification.textContent = message;
+      document.body.appendChild(notification);
+
+      // Animate in
+      setTimeout(() => {
+        notification.classList.remove('translate-x-full');
+        notification.classList.add('translate-x-0');
+      }, 100);
+
+      // Remove after 3 seconds
+      setTimeout(() => {
+        notification.classList.remove('translate-x-0');
+        notification.classList.add('translate-x-full');
+        setTimeout(() => {
+          document.body.removeChild(notification);
+        }, 300);
+      }, 3000);
+    }
+
+    async function downloadPhoto(downloadUrl, photoId) {
+      try {
+        const res = await fetch(downloadUrl);
+        const data = await res.json();
+
+        if (data.success && data.base64) {
+          // สร้าง link สำหรับดาวน์โหลดจาก base64
+          const link = document.createElement('a');
+          link.href = data.base64;
+          link.download = 'photo_' + photoId + '.jpg';
+
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        } else {
+          throw new Error('Invalid response from server');
+        }
+
+      } catch (e) {
+        console.error("Download error:", e);
+        alert("ไม่สามารถดาวน์โหลดไฟล์ได้");
+      }
+    }
+
+    // SSE connection for real-time updates
+    let eventSource = null;
+    let reconnectAttempts = 0;
+    const maxReconnectAttempts = 5;
+    const reconnectDelay = 3000; // 3 seconds
+
+    function connectSSE() {
+      const eventCode = '{{eventCode}}';
+      const streamUrl = '/' + eventCode + '/photos/stream';
+
+      console.log('Connecting to SSE stream:', streamUrl);
+
+      eventSource = new EventSource(streamUrl);
+
+      eventSource.onopen = function(event) {
+        console.log('SSE connection opened');
+        reconnectAttempts = 0;
+        showNotification('เชื่อมต่อแบบเรียลไทม์แล้ว', 'success');
+      };
+
+      eventSource.onmessage = function(event) {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('SSE message received:', data);
+
+          if (data.type === 'photo_update') {
+            handleNewPhoto(data.photo);
+          } else if (data.type === 'heartbeat') {
+            console.log('SSE heartbeat received');
+          } else if (data.type === 'connected') {
+            console.log('SSE connection confirmed for event:', data.eventCode);
+          }
+        } catch (error) {
+          console.error('Error parsing SSE message:', error);
+        }
+      };
+
+      eventSource.onerror = function(event) {
+        console.error('SSE connection error:', event);
+        eventSource.close();
+
+        if (reconnectAttempts < maxReconnectAttempts) {
+          reconnectAttempts++;
+          console.log('Attempting to reconnect (' + reconnectAttempts + '/' + maxReconnectAttempts + ')...');
+          showNotification('พยายามเชื่อมต่อใหม่... (' + reconnectAttempts + '/' + maxReconnectAttempts + ')', 'warning');
+          setTimeout(connectSSE, reconnectDelay);
+        } else {
+          console.error('Max reconnection attempts reached');
+          showNotification('ไม่สามารถเชื่อมต่อแบบเรียลไทม์ได้ กรุณารีเฟรชหน้า', 'error');
+        }
+      };
+    }
+
+    function handleNewPhoto(photoData) {
+      console.log('New photo received:', photoData);
+
+      // Create the photo element directly as a DOM node (not as HTML string)
+      const photoElement = createPhotoElementDOM(photoData, '{{eventCode}}');
+
+      // Add to the beginning of the photo grid
+      const photoGrid = document.querySelector('.photo-grid');
+      if (photoGrid) {
+        photoGrid.insertBefore(photoElement, photoGrid.firstChild);
+
+        // Update total photos count
+        const totalPhotosElement = document.querySelector('p:has(span.font-semibold)');
+        if (totalPhotosElement) {
+          const textContent = totalPhotosElement.textContent || totalPhotosElement.innerText;
+          const match = textContent.match(/Total:\s*(\d+)\s*photos?/);
+          if (match && match[1]) {
+            const currentTotal = parseInt(match[1]);
+            totalPhotosElement.innerHTML = 'Total: <span class="font-semibold">{{eventCode}}</span><br>Total: ' + (currentTotal + 1) + ' photos';
+          } else {
+            // If regex doesn't match, try to find the number in a different way
+            const numbers = textContent.match(/\d+/);
+            if (numbers && numbers[0]) {
+              const currentTotal = parseInt(numbers[0]);
+              totalPhotosElement.innerHTML = 'Total: <span class="font-semibold">{{eventCode}}</span><br>Total: ' + (currentTotal + 1) + ' photos';
+            } else {
+              // Fallback: just add a new count
+              totalPhotosElement.innerHTML = 'Total: <span class="font-semibold">{{eventCode}}</span><br>Total: 1 photos';
+            }
+          }
+        }
+
+        // Show notification
+        showNotification('มีรูปใหม่!', 'success');
+
+        // Highlight the new photo
+        photoElement.classList.add('ring-4', 'ring-blue-400', 'ring-opacity-75');
+        setTimeout(() => {
+          photoElement.classList.remove('ring-4', 'ring-blue-400', 'ring-opacity-75');
+        }, 3000);
+      }
+    }
+
+    function createPhotoElementDOM(photoData, eventCode) {
+      // This function is used for dynamically added photos via SSE
+      // It returns a DOM element with proper event listeners
+      const imageUrl = photoData.displayUrl || photoData.downloadUrl;
+      const photoId = photoData.photoId;
+      const lastModified = photoData.lastModified ? new Date(photoData.lastModified).toLocaleString('th-TH') : '';
+      const downloadUrl = photoData.downloadUrl;
+
+      // Create a container element
+      const photoDiv = document.createElement('div');
+      photoDiv.className = 'bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-300';
+
+      // Create the image container
+      const imageContainer = document.createElement('div');
+      imageContainer.className = 'aspect-square relative group cursor-pointer m-2 border rounded-lg overflow-hidden';
+      imageContainer.addEventListener('click', function() {
+        openModal(imageUrl);
+      });
+
+      if (imageUrl) {
+        const img = document.createElement('img');
+        img.src = imageUrl;
+        img.alt = 'Photo ' + photoId;
+        img.className = 'w-full h-full object-cover';
+        img.loading = 'lazy';
+
+        // Create hover overlay
+        const hoverOverlay = document.createElement('div');
+        hoverOverlay.className = 'absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all duration-300 flex items-center justify-center pointer-events-none';
+
+        const eyeIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        eyeIcon.setAttribute('class', 'w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300');
+        eyeIcon.setAttribute('fill', 'none');
+        eyeIcon.setAttribute('stroke', 'currentColor');
+        eyeIcon.setAttribute('viewBox', '0 0 24 24');
+
+        const path1 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path1.setAttribute('stroke-linecap', 'round');
+        path1.setAttribute('stroke-linejoin', 'round');
+        path1.setAttribute('stroke-width', '2');
+        path1.setAttribute('d', 'M15 12a3 3 0 11-6 0 3 3 0 016 0z');
+
+        const path2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path2.setAttribute('stroke-linecap', 'round');
+        path2.setAttribute('stroke-linejoin', 'round');
+        path2.setAttribute('stroke-width', '2');
+        path2.setAttribute('d', 'M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z');
+
+        eyeIcon.appendChild(path1);
+        eyeIcon.appendChild(path2);
+        hoverOverlay.appendChild(eyeIcon);
+
+        imageContainer.appendChild(img);
+        imageContainer.appendChild(hoverOverlay);
+      } else {
+        const noImageDiv = document.createElement('div');
+        noImageDiv.className = 'w-full h-full bg-gray-200 flex items-center justify-center';
+        const noImageSpan = document.createElement('span');
+        noImageSpan.className = 'text-gray-500';
+        noImageSpan.textContent = 'No image';
+        noImageDiv.appendChild(noImageSpan);
+        imageContainer.appendChild(noImageDiv);
+      }
+
+      // Create the info container
+      const infoContainer = document.createElement('div');
+      infoContainer.className = 'p-3 flex justify-between items-center';
+
+      const textInfo = document.createElement('div');
+      textInfo.className = 'min-w-0 flex-1 mr-2';
+
+      const idPara = document.createElement('p');
+      idPara.className = 'text-xs text-gray-500 truncate';
+      idPara.title = 'ID: ' + photoId;
+      idPara.textContent = 'ID: ' + photoId;
+
+      const datePara = document.createElement('p');
+      datePara.className = 'text-xs text-gray-400 truncate';
+      datePara.title = lastModified;
+      datePara.textContent = lastModified;
+
+      textInfo.appendChild(idPara);
+      textInfo.appendChild(datePara);
+
+      infoContainer.appendChild(textInfo);
+
+      if (downloadUrl) {
+        const downloadButton = document.createElement('button');
+        downloadButton.className = 'flex-shrink-0 text-black px-2 py-1 text-xs rounded hover:bg-gray-200 transition-colors duration-200 flex items-center';
+        downloadButton.addEventListener('click', function() {
+          downloadPhoto('/' + eventCode + '/photos/' + photoId, photoId);
+        });
+
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('class', 'w-5 h-5 mr-1');
+        svg.setAttribute('fill', 'none');
+        svg.setAttribute('stroke', 'currentColor');
+        svg.setAttribute('viewBox', '0 0 24 24');
+
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('stroke-linecap', 'round');
+        path.setAttribute('stroke-linejoin', 'round');
+        path.setAttribute('stroke-width', '2');
+        path.setAttribute('d', 'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4');
+
+        svg.appendChild(path);
+        downloadButton.appendChild(svg);
+        infoContainer.appendChild(downloadButton);
+      }
+
+      photoDiv.appendChild(imageContainer);
+      photoDiv.appendChild(infoContainer);
+
+      return photoDiv;
+    }
+
+    // Initialize SSE connection when page loads
+    document.addEventListener('DOMContentLoaded', function() {
+      connectSSE();
+
+      // Set up modal event listeners
+      const modal = document.getElementById('imageModal');
+      if (modal) {
+        modal.addEventListener('click', function(event) {
+          if (event.target === this) {
+            closeModal();
+          }
+        });
+      }
+    });
+
+    // Close modal with Escape key
+    document.addEventListener('keydown', function(event) {
+      if (event.key === 'Escape') {
+        closeModal();
+      }
+    });
+
+    // Cleanup SSE connection when page unloads
+    window.addEventListener('beforeunload', function() {
+      if (eventSource) {
+        eventSource.close();
+      }
+    });
+  </script>
+</body>
+</html>
