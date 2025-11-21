@@ -1,11 +1,15 @@
 # Use Node.js 22 LTS Alpine Linux for smaller image size and x86_64 compatibility
-FROM node:22-alpine AS base
+FROM node:22-slim AS base
 
 # Set working directory
 WORKDIR /app
 
 # Install system dependencies (dcraw for NEF → TIFF)
-RUN apk add --no-cache dcraw
+# ติดตั้ง dcraw (หรือจะใช้ libraw-bin ก็ได้)
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+       dcraw \
+  && rm -rf /var/lib/apt/lists/*
 
 # Copy package files first for better Docker layer caching
 COPY package*.json ./
