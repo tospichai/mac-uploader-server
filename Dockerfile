@@ -1,23 +1,5 @@
 # Use Node.js 18 LTS Alpine Linux for smaller image size and x86_64 compatibility
-FROM node:18-alpine AS base
-
-# Install dependencies needed for Sharp image processing library
-RUN apk add --no-cache \
-    libvips \
-    vips-dev \
-    pkgconfig \
-    python3 \
-    make \
-    g++ \
-    cairo-dev \
-    jpeg-dev \
-    pango-dev \
-    musl-dev \
-    giflib-dev \
-    pixman-dev \
-    pangomm-dev \
-    libjpeg-turbo-dev \
-    freetype-dev
+FROM node:22-alpine AS base
 
 # Set working directory
 WORKDIR /app
