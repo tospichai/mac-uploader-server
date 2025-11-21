@@ -4,7 +4,8 @@
   "type": "module",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "postinstall": "sharp --install"
   },
   "keywords": [],
   "author": "",
@@ -20,7 +21,7 @@
     "form-data": "^4.0.5",
     "multer": "^2.0.2",
     "node-fetch": "^3.3.2",
-    "sharp": "^0.33.0",
+    "sharp": "^0.33.5",
     "uuid": "^13.0.0"
   }
 }

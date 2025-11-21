@@ -1,4 +1,9 @@
 import sharp from 'sharp';
+import fs from "fs/promises";
+import os from "os";
+import path from "path";
+import { promisify } from "util";
+import { execFile } from "child_process";
 import { isDirectUploadAllowed, isNEFFile, getFileExtension } from '../utils/fileUtils.js';
 import {
   IMAGE_MAX_WIDTH,
@@ -8,6 +13,8 @@ import {
 } from '../config/constants.js';
 import { createValidationError } from '../middleware/errorHandler.js';
 import { logInfo, logError, logPerformance } from '../middleware/logger.js';
+
+const execFileAsync = promisify(execFile);
 
 /**
  * Process image based on file type
@@ -78,26 +85,86 @@ export async function processImage(file, filename) {
  * @returns {Promise<Object>} - Converted image data
  */
 async function convertNEFToJPG(buffer) {
+  // NOTE: อย่าใช้ sharp(buffer) กับ NEF โดยตรง เพราะจะได้แค่ thumbnail
+  const tmpDir = os.tmpdir();
+  const nefPath = path.join(tmpDir, `nef-${Date.now()}.nef`);
+  const tiffPath = nefPath.replace(/\.nef$/, ".tiff");
+
   try {
-    const processedBuffer = await sharp(buffer)
-      .resize({
+    logInfo("Starting NEF → TIFF via dcraw ...", "ImageService");
+
+    // 1) เขียน buffer NEF ลงไฟล์ชั่วคราวก่อน
+    await fs.writeFile(nefPath, buffer);
+
+    // 2) ใช้ dcraw แปลง NEF → TIFF (16-bit, full-res, white balance จากกล้อง)
+    // -T  : output เป็น TIFF
+    // -o 1: sRGB color space
+    // -q 3: high quality demosaic
+    // -w  : ใช้ camera white balance
+    await execFileAsync("dcraw", ["-T", "-o", "1", "-q", "3", "-w", nefPath]);
+
+    // dcraw จะสร้างไฟล์ .tiff ชื่อเดียวกันกับ .nef
+    // เช่น xxx.nef → xxx.tiff
+    logInfo(`dcraw finished, TIFF path: ${tiffPath}`, "ImageService");
+
+    // 3) ใช้ sharp อ่าน TIFF (full resolution แล้ว)
+    const tiffSharp = sharp(tiffPath);
+    const meta = await tiffSharp.metadata();
+    logInfo(
+      `Decoded TIFF from NEF: ${meta.width}x${meta.height}, depth: ${meta.depth}`,
+      "ImageService"
+    );
+
+    // 4) สร้าง pipeline resize (ถ้าต้องการจำกัดความกว้าง)
+    let pipeline = tiffSharp;
+
+    if (meta.width && meta.width > IMAGE_MAX_WIDTH) {
+      pipeline = pipeline.resize({
         width: IMAGE_MAX_WIDTH,
-        height: null, // auto height
-        withoutEnlargement: true // don't enlarge if smaller
-      })
+        height: null,
+        fit: "inside",
+        withoutEnlargement: true,
+        kernel: sharp.kernel.lanczos3,
+      });
+    }
+
+    // 5) แปลงเป็น JPEG คุณภาพสูง
+    const processedBuffer = await pipeline
       .jpeg({
         quality: JPEG_QUALITY,
-        progressive: PROGRESSIVE_JPEG
+        progressive: PROGRESSIVE_JPEG,
+        chromaSubsampling: "4:2:0",
+        mozjpeg: true,
+        trellisQuantisation: true,
+        overshootDeringing: true,
+        optimiseScans: true,
       })
       .toBuffer();
 
+    const finalMeta = await sharp(processedBuffer).metadata();
+    logInfo(
+      `Final JPEG from NEF: ${finalMeta.width}x${finalMeta.height}`,
+      "ImageService"
+    );
+
     return {
       buffer: processedBuffer,
-      mimetype: 'image/jpeg'
+      mimetype: "image/jpeg",
     };
   } catch (error) {
-    logError(error, 'ImageService.convertNEFToJPG');
+    logError(error, "ImageService.convertNEFToJPG");
     throw new Error(`NEF conversion failed: ${error.message}`);
+  } finally {
+    // 6) ลบไฟล์ชั่วคราว
+    try {
+      await fs.rm(nefPath, { force: true });
+      await fs.rm(tiffPath, { force: true });
+    } catch (cleanupErr) {
+      logInfo(
+        `Cleanup temp NEF/TIFF failed: ${cleanupErr.message}`,
+        "ImageService"
+      );
+    }
   }
 }
 
