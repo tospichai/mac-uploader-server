@@ -10,6 +10,10 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { v4 as uuidv4 } from "uuid";
 import dotenv from "dotenv";
 import cors from "cors";
+import sharp from "sharp";
+import path from "path";
+import fs from "fs";
+import crypto from "crypto";
 
 dotenv.config();
 
@@ -29,6 +33,94 @@ const s3 = new S3Client({
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
   },
 });
+
+// ====== IMAGE PROCESSING UTILITIES ======
+// Function to check if file extension is allowed for direct upload
+function isDirectUploadAllowed(filename) {
+  if (!filename) return false;
+  const ext = path.extname(filename).toLowerCase();
+  return ['.jpg', '.jpeg', '.png'].includes(ext);
+}
+
+// Function to check if file is NEF format
+function isNEFFile(filename) {
+  if (!filename) return false;
+  const ext = path.extname(filename).toLowerCase();
+  return ext === '.nef';
+}
+
+// Function to process image based on file type
+async function processImage(file, filename) {
+  if (!file || !file.buffer) {
+    throw new Error('Invalid file data');
+  }
+
+  // If it's already a supported format (jpg, jpeg, png), return as-is
+  if (isDirectUploadAllowed(filename)) {
+    return {
+      buffer: file.buffer,
+      mimetype: file.mimetype || 'image/jpeg',
+      processed: false
+    };
+  }
+
+  // If it's NEF file, convert to JPG with optimization
+  if (isNEFFile(filename)) {
+    try {
+      console.log(`Converting NEF file: ${filename}`);
+
+      // Convert NEF to JPG with max width 2048px and optimized quality
+      const processedBuffer = await sharp(file.buffer)
+        .resize({
+          width: 2048,
+          height: null, // auto height
+          withoutEnlargement: true // don't enlarge if smaller
+        })
+        .jpeg({
+          quality: 85, // good quality with reasonable file size
+          progressive: true
+        })
+        .toBuffer();
+
+      return {
+        buffer: processedBuffer,
+        mimetype: 'image/jpeg',
+        processed: true,
+        originalFormat: 'NEF'
+      };
+    } catch (error) {
+      console.error(`Error processing NEF file ${filename}:`, error);
+      throw new Error(`Failed to process NEF file: ${error.message}`);
+    }
+  }
+
+  // If it's another unsupported format, try to convert to JPG
+  try {
+    console.log(`Attempting to convert unsupported file: ${filename}`);
+
+    const processedBuffer = await sharp(file.buffer)
+      .resize({
+        width: 2048,
+        height: null,
+        withoutEnlargement: true
+      })
+      .jpeg({
+        quality: 85,
+        progressive: true
+      })
+      .toBuffer();
+
+    return {
+      buffer: processedBuffer,
+      mimetype: 'image/jpeg',
+      processed: true,
+      originalFormat: path.extname(filename).substring(1)
+    };
+  } catch (error) {
+    console.error(`Error processing file ${filename}:`, error);
+    throw new Error(`Unsupported file format: ${path.extname(filename)}`);
+  }
+}
 
 // ====== EXPRESS + MULTER CONFIG ======
 const app = express();
@@ -107,29 +199,54 @@ app.post(
       // const baseKey = `events/${eventCode}/${datePrefix}/${photoId}`;
       const baseKey = `events/${eventCode}/${photoId}`;
 
-      // ====== Upload original ======
+      // ====== Process original file based on type ======
+      console.log(`Processing file: ${originalName}`);
+      let processedOriginal;
+      try {
+        processedOriginal = await processImage(originalFile, originalName);
+        console.log(`File processed successfully. Processed: ${processedOriginal.processed}`);
+      } catch (error) {
+        return res.status(400).json({
+          success: false,
+          message: `File processing failed: ${error.message}`
+        });
+      }
+
+      // ====== Upload processed original ======
       const originalKey = `${baseKey}_original.jpg`;
       await s3.send(
         new PutObjectCommand({
           Bucket: S3_BUCKET,
           Key: originalKey,
-          Body: originalFile.buffer,
-          ContentType: originalFile.mimetype || "image/jpeg",
+          Body: processedOriginal.buffer,
+          ContentType: processedOriginal.mimetype,
         })
       );
 
-      // ====== Upload thumbnail (ถ้ามี) ======
+      // ====== Process and upload thumbnail (ถ้ามี) ======
       let thumbKey = null;
       if (thumbFile) {
-        thumbKey = `${baseKey}_thumb.jpg`;
-        await s3.send(
-          new PutObjectCommand({
-            Bucket: S3_BUCKET,
-            Key: thumbKey,
-            Body: thumbFile.buffer,
-            ContentType: thumbFile.mimetype || "image/jpeg",
-          })
-        );
+        console.log(`Processing thumbnail file: ${thumbFile.originalname}`);
+        let processedThumb;
+        try {
+          processedThumb = await processImage(thumbFile, thumbFile.originalname);
+          console.log(`Thumbnail processed successfully. Processed: ${processedThumb.processed}`);
+        } catch (error) {
+          console.error(`Thumbnail processing failed:`, error);
+          // Continue without thumbnail if processing fails
+        }
+
+        if (processedThumb) {
+          thumbKey = `${baseKey}_thumb.jpg`;
+          await s3.send(
+            new PutObjectCommand({
+              Bucket: S3_BUCKET,
+              Key: thumbKey,
+              Body: processedThumb.buffer,
+              ContentType: processedThumb.mimetype,
+            })
+          );
+        }
       }
 
       // Generate presigned URLs for the new photo
@@ -190,6 +307,8 @@ app.post(
           shot_at: shotAt,
           checksum: checksum,
           event_code: eventCode,
+          processed: processedOriginal.processed,
+          original_format: processedOriginal.originalFormat || null,
         },
       });
     } catch (err) {
