@@ -1,40 +1,34 @@
-# ใช้ Node.js 22 (Debian base) มี apt-get ให้ใช้
-FROM node:22-bookworm AS base
+# Use Node.js 22 LTS Alpine Linux for smaller image size and x86_64 compatibility
+FROM node:22-alpine AS base
 
-# ให้เห็นชัด ๆ ว่า node กับ npm มีจริง
-RUN node -v && corepack disable || true
-
-# ติดตั้ง npm + dcraw แบบชัวร์ๆ
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends \
-       npm \
-       dcraw \
-  && rm -rf /var/lib/apt/lists/*
-
-# ตั้ง working directory
+# Set working directory
 WORKDIR /app
 
-# copy package.json / package-lock.json มาก่อน
+# Install system dependencies (dcraw for NEF → TIFF)
+RUN apk add --no-cache dcraw
+
+# Copy package files first for better Docker layer caching
 COPY package*.json ./
 
-# ติดตั้ง dependencies (production only)
-RUN npm install --omit=dev && npm cache clean --force
+# Install dependencies
+RUN npm ci --only=production && npm cache clean --force
 
-# สร้าง user ปลอดภัย
-RUN useradd -u 1001 -m nodejs
+# Create non-root user for security
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001
 
-# copy source code ทั้งหมด
+# Copy application code
 COPY --chown=nodejs:nodejs . .
 
-# สลับไปใช้ non-root user
+# Switch to non-root user
 USER nodejs
 
-# ให้ app ฟัง port 7001 ข้างใน container
+# Expose port
 EXPOSE 7001
 
-# healthcheck port 7001
+# Health check to verify the application is running
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:7001/api/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
+    CMD node -e "require('http').get('http://localhost:7001/api/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
 
-# สั่งรัน app
+# Start the application
 CMD ["npm", "start"]

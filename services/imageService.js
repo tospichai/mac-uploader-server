@@ -2,6 +2,7 @@ import sharp from 'sharp';
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
+import dcraw from "dcraw";
 import { promisify } from "util";
 import { execFile } from "child_process";
 import { isDirectUploadAllowed, isNEFFile, getFileExtension } from '../utils/fileUtils.js';
@@ -93,15 +94,9 @@ async function convertNEFToJPG(buffer) {
   try {
     logInfo("Starting NEF → TIFF via dcraw ...", "ImageService");
 
-    // 1) เขียน buffer NEF ลงไฟล์ชั่วคราวก่อน
-    await fs.writeFile(nefPath, buffer);
-
-    // 2) ใช้ dcraw แปลง NEF → TIFF (16-bit, full-res, white balance จากกล้อง)
-    // -T  : output เป็น TIFF
-    // -o 1: sRGB color space
-    // -q 3: high quality demosaic
-    // -w  : ใช้ camera white balance
-    await execFileAsync("dcraw", ["-T", "-o", "1", "-q", "3", "-w", nefPath]);
+    // 1) เขียน buffer NEF ลงไฟล์ชั่วคราวก่อน'
+    const tiffFile = dcraw(buffer, { exportAsTiff: true });
+    await fs.writeFile(tiffPath, tiffFile);
 
     // dcraw จะสร้างไฟล์ .tiff ชื่อเดียวกันกับ .nef
     // เช่น xxx.nef → xxx.tiff
