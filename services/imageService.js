@@ -112,14 +112,12 @@ async function convertNEFToJPG(buffer) {
     logInfo("Starting RAW → JPEG via darktable-cli ...", "ImageService");
 
     await execFileAsync("darktable-cli", [
-      nefPath,
-      jpgPath,
+      nefPath, // input NEF
+      jpgPath, // output: ลงท้าย .jpg อยู่แล้ว → เป็น JPEG
       "--hq",
-      "false",
-      "--export-format",
-      "jpeg",
-      "--export-quality",
-      String(JPEG_QUALITY),
+      "false", // ลดคุณภาพ processing ของ darktable ให้เร็วขึ้นหน่อย
+      // ถ้าอยากให้มัน resize ตอน export เลยก็ใช้:
+      // "--width", String(IMAGE_MAX_WIDTH),
     ]);
 
     logInfo(`darktable-cli finished, JPEG path: ${jpgPath}`, "ImageService");
