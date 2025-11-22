@@ -4,8 +4,7 @@
   "type": "module",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "postinstall": "sharp --install"
+    "start": "node server.js"
   },
   "keywords": [],
   "author": "",
