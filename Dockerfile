@@ -1,5 +1,5 @@
 # Use Node.js 22 LTS Alpine Linux for smaller image size and x86_64 compatibility
-FROM node:22-alpine AS base
+FROM node:20-alpine AS base
 
 # Set working directory
 WORKDIR /app
