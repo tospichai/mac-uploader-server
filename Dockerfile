@@ -1,31 +1,29 @@
-# Use Node.js 22 LTS Alpine Linux for smaller image size and x86_64 compatibility
-FROM node:22-alpine AS base
+# ใช้ Debian แทน Alpine เพื่อให้ติดตั้ง darktable-cli / LibRaw ง่าย
+FROM node:22-bookworm AS base
 
-# Set working directory
 WORKDIR /app
 
-# Copy package files first for better Docker layer caching
-COPY package*.json ./
+# ติดตั้งเครื่องมือแปลง RAW (ตัวอย่างใช้ darktable-cli)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends darktable && \
+    rm -rf /var/lib/apt/lists/*
 
-# Install dependencies
+# Copy package + install deps
+COPY package*.json ./
 RUN npm ci --only=production && npm cache clean --force
 
-# Create non-root user for security
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodejs -u 1001
+# ตั้ง user ให้ปลอดภัย
+RUN groupadd -g 1001 nodejs && \
+    useradd -m -u 1001 -g nodejs nodejs
 
-# Copy application code
+# Copy app code
 COPY --chown=nodejs:nodejs . .
 
-# Switch to non-root user
 USER nodejs
 
-# Expose port
 EXPOSE 7001
 
-# Health check to verify the application is running
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD node -e "require('http').get('http://localhost:7001/api/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
 
-# Start the application
 CMD ["npm", "start"]

@@ -1,19 +1,22 @@
-import sharp from 'sharp';
+import sharp from "sharp";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
-import dcraw from "dcraw";
 import { promisify } from "util";
 import { execFile } from "child_process";
-import { isDirectUploadAllowed, isNEFFile, getFileExtension } from '../utils/fileUtils.js';
+import {
+  isDirectUploadAllowed,
+  isNEFFile,
+  getFileExtension,
+} from "../utils/fileUtils.js";
 import {
   IMAGE_MAX_WIDTH,
   JPEG_QUALITY,
   PROGRESSIVE_JPEG,
-  ERROR_MESSAGES
-} from '../config/constants.js';
-import { createValidationError } from '../middleware/errorHandler.js';
-import { logInfo, logError, logPerformance } from '../middleware/logger.js';
+  ERROR_MESSAGES,
+} from "../config/constants.js";
+import { createValidationError } from "../middleware/errorHandler.js";
+import { logInfo, logError, logPerformance } from "../middleware/logger.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -28,55 +31,61 @@ export async function processImage(file, filename) {
 
   try {
     if (!file || !file.buffer) {
-      throw createValidationError('Invalid file data');
+      throw createValidationError("Invalid file data");
     }
 
-    logInfo(`Processing file: ${filename}`, 'ImageService');
+    logInfo(`Processing file: ${filename}`, "ImageService");
 
     // If it's already a supported format (jpg, jpeg, png), return as-is
     if (isDirectUploadAllowed(filename)) {
-      logPerformance('Direct upload allowed', startTime, 'ImageService');
+      logPerformance("Direct upload allowed", startTime, "ImageService");
       return {
         buffer: file.buffer,
-        mimetype: file.mimetype || 'image/jpeg',
-        processed: false
+        mimetype: file.mimetype || "image/jpeg",
+        processed: false,
       };
     }
 
     // If it's NEF file, convert to JPG with optimization
     if (isNEFFile(filename)) {
-      logInfo(`Converting NEF file: ${filename}`, 'ImageService');
+      logInfo(`Converting NEF file: ${filename}`, "ImageService");
       const result = await convertNEFToJPG(file.buffer);
-      logPerformance('NEF conversion', startTime, 'ImageService');
+      logPerformance("NEF conversion", startTime, "ImageService");
       return {
         ...result,
         processed: true,
-        originalFormat: 'NEF'
+        originalFormat: "NEF",
       };
     }
 
     // If it's another unsupported format, try to convert to JPG
-    logInfo(`Attempting to convert unsupported file: ${filename}`, 'ImageService');
+    logInfo(
+      `Attempting to convert unsupported file: ${filename}`,
+      "ImageService"
+    );
     const result = await convertToJPG(file.buffer);
-    logPerformance('Format conversion', startTime, 'ImageService');
+    logPerformance("Format conversion", startTime, "ImageService");
     return {
       ...result,
       processed: true,
-      originalFormat: getFileExtension(filename)
+      originalFormat: getFileExtension(filename),
     };
-
   } catch (error) {
-    logError(error, 'ImageService.processImage');
+    logError(error, "ImageService.processImage");
 
-    if (error.name === 'AppError') {
+    if (error.name === "AppError") {
       throw error;
     }
 
     if (isNEFFile(filename)) {
-      throw createValidationError(`${ERROR_MESSAGES.FAILED_TO_PROCESS_NEF}: ${error.message}`);
+      throw createValidationError(
+        `${ERROR_MESSAGES.FAILED_TO_PROCESS_NEF}: ${error.message}`
+      );
     }
 
-    throw createValidationError(`${ERROR_MESSAGES.UNSUPPORTED_FORMAT}: ${getFileExtension(filename)}`);
+    throw createValidationError(
+      `${ERROR_MESSAGES.UNSUPPORTED_FORMAT}: ${getFileExtension(filename)}`
+    );
   }
 }
 
@@ -86,32 +95,45 @@ export async function processImage(file, filename) {
  * @returns {Promise<Object>} - Converted image data
  */
 async function convertNEFToJPG(buffer) {
-  // NOTE: อย่าใช้ sharp(buffer) กับ NEF โดยตรง เพราะจะได้แค่ thumbnail
   const tmpDir = os.tmpdir();
   const nefPath = path.join(tmpDir, `nef-${Date.now()}.nef`);
-  const tiffPath = nefPath.replace(/\.nef$/, ".tiff");
+  const jpgPath = nefPath.replace(/\.nef$/, ".jpg");
+
+  const start = Date.now();
 
   try {
-    logInfo("Starting NEF → TIFF via dcraw ...", "ImageService");
+    logInfo("Saving NEF to temp file ...", "ImageService");
+    await fs.writeFile(nefPath, buffer);
 
-    // 1) เขียน buffer NEF ลงไฟล์ชั่วคราวก่อน'
-    const tiffFile = dcraw(buffer, { exportAsTiff: true });
-    await fs.writeFile(tiffPath, tiffFile);
+    // 1) ใช้ darktable-cli แปลง NEF → JPEG โดยตรง
+    // ตัวอย่าง options:
+    //   --hq false   : ปิด high quality processing เพื่อลดเวลาคำนวณ
+    //   --width/--height : บังคับ resize ตอน export ได้เลย (แล้วแต่ต้องการ)
+    logInfo("Starting RAW → JPEG via darktable-cli ...", "ImageService");
 
-    // dcraw จะสร้างไฟล์ .tiff ชื่อเดียวกันกับ .nef
-    // เช่น xxx.nef → xxx.tiff
-    logInfo(`dcraw finished, TIFF path: ${tiffPath}`, "ImageService");
+    await execFileAsync("darktable-cli", [
+      nefPath,
+      jpgPath,
+      "--hq",
+      "false",
+      "--export-format",
+      "jpeg",
+      "--export-quality",
+      String(JPEG_QUALITY),
+    ]);
 
-    // 3) ใช้ sharp อ่าน TIFF (full resolution แล้ว)
-    const tiffSharp = sharp(tiffPath);
-    const meta = await tiffSharp.metadata();
+    logInfo(`darktable-cli finished, JPEG path: ${jpgPath}`, "ImageService");
+
+    // 2) อ่าน JPEG ที่ได้ด้วย sharp เพื่อจัดการต่อ (resize เพิ่ม, progressive ฯลฯ)
+    const jpegSharp = sharp(jpgPath);
+    const meta = await jpegSharp.metadata();
+
     logInfo(
-      `Decoded TIFF from NEF: ${meta.width}x${meta.height}, depth: ${meta.depth}`,
+      `Decoded JPEG from NEF: ${meta.width}x${meta.height}, depth: ${meta.depth}`,
       "ImageService"
     );
 
-    // 4) สร้าง pipeline resize (ถ้าต้องการจำกัดความกว้าง)
-    let pipeline = tiffSharp;
+    let pipeline = jpegSharp;
 
     if (meta.width && meta.width > IMAGE_MAX_WIDTH) {
       pipeline = pipeline.resize({
@@ -123,7 +145,6 @@ async function convertNEFToJPG(buffer) {
       });
     }
 
-    // 5) แปลงเป็น JPEG คุณภาพสูง
     const processedBuffer = await pipeline
       .jpeg({
         quality: JPEG_QUALITY,
@@ -138,7 +159,12 @@ async function convertNEFToJPG(buffer) {
 
     const finalMeta = await sharp(processedBuffer).metadata();
     logInfo(
-      `Final JPEG from NEF: ${finalMeta.width}x${finalMeta.height}`,
+      `Final JPEG from NEF (after sharp): ${finalMeta.width}x${finalMeta.height}`,
+      "ImageService"
+    );
+
+    logInfo(
+      `NEF conversion (darktable-cli + sharp) took ${Date.now() - start}ms`,
       "ImageService"
     );
 
@@ -150,13 +176,13 @@ async function convertNEFToJPG(buffer) {
     logError(error, "ImageService.convertNEFToJPG");
     throw new Error(`NEF conversion failed: ${error.message}`);
   } finally {
-    // 6) ลบไฟล์ชั่วคราว
+    // ลบไฟล์ชั่วคราว
     try {
       await fs.rm(nefPath, { force: true });
-      await fs.rm(tiffPath, { force: true });
+      await fs.rm(jpgPath, { force: true });
     } catch (cleanupErr) {
       logInfo(
-        `Cleanup temp NEF/TIFF failed: ${cleanupErr.message}`,
+        `Cleanup temp NEF/JPEG failed: ${cleanupErr.message}`,
         "ImageService"
       );
     }
@@ -174,20 +200,20 @@ async function convertToJPG(buffer) {
       .resize({
         width: IMAGE_MAX_WIDTH,
         height: null,
-        withoutEnlargement: true
+        withoutEnlargement: true,
       })
       .jpeg({
         quality: JPEG_QUALITY,
-        progressive: PROGRESSIVE_JPEG
+        progressive: PROGRESSIVE_JPEG,
       })
       .toBuffer();
 
     return {
       buffer: processedBuffer,
-      mimetype: 'image/jpeg'
+      mimetype: "image/jpeg",
     };
   } catch (error) {
-    logError(error, 'ImageService.convertToJPG');
+    logError(error, "ImageService.convertToJPG");
     throw new Error(`Image conversion failed: ${error.message}`);
   }
 }
@@ -206,10 +232,10 @@ export async function getImageMetadata(buffer) {
       format: metadata.format,
       size: metadata.size,
       hasAlpha: metadata.hasAlpha,
-      orientation: metadata.orientation
+      orientation: metadata.orientation,
     };
   } catch (error) {
-    logError(error, 'ImageService.getImageMetadata');
+    logError(error, "ImageService.getImageMetadata");
     throw new Error(`Failed to get image metadata: ${error.message}`);
   }
 }
@@ -228,20 +254,20 @@ export async function resizeImage(buffer, width, height = null, options = {}) {
       width,
       height: height || null,
       withoutEnlargement: options.withoutEnlargement !== false,
-      fit: options.fit || 'cover'
+      fit: options.fit || "cover",
     };
 
     const processedBuffer = await sharp(buffer)
       .resize(resizeOptions)
       .jpeg({
         quality: options.quality || JPEG_QUALITY,
-        progressive: options.progressive !== false
+        progressive: options.progressive !== false,
       })
       .toBuffer();
 
     return processedBuffer;
   } catch (error) {
-    logError(error, 'ImageService.resizeImage');
+    logError(error, "ImageService.resizeImage");
     throw new Error(`Failed to resize image: ${error.message}`);
   }
 }
