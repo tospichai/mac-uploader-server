@@ -108,7 +108,7 @@ async function convertNEFToJPG(buffer) {
     logInfo("Extracting JPEG preview via exiftool ...", "ImageService");
     const previewBuffer = await extractPreviewFromNEF(nefPath);
 
-    let pipeline = sharp(previewBuffer);
+    let pipeline = sharp(previewBuffer).rotate();
     const meta = await pipeline.metadata();
     logInfo(
       `Embedded JPEG preview: ${meta.width}x${meta.height}, depth: ${meta.depth}`,
