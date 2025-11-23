@@ -105,26 +105,39 @@ async function convertNEFToJPG(buffer) {
     logInfo("Saving NEF to temp file ...", "ImageService");
     await fs.writeFile(nefPath, buffer);
 
-    logInfo("Extracting JPEG preview via exiftool ...", "ImageService");
-    const previewBuffer = await extractPreviewFromNEF(nefPath);
-
-    let pipeline = sharp(previewBuffer).rotate();
-    const meta = await pipeline.metadata();
+    // 2) ดึง orientation จาก NEF
+    const orientation = await getOrientationFromNEF(nefPath);
+    const rotationDegrees = orientationToDegrees(orientation);
     logInfo(
-      `Embedded JPEG preview: ${meta.width}x${meta.height}, depth: ${meta.depth}`,
+      `NEF Orientation: ${orientation ?? "N/A"}, rotate: ${rotationDegrees}°`,
       "ImageService"
     );
 
-    if (meta.width && meta.width > IMAGE_MAX_WIDTH) {
-      pipeline = pipeline.resize({
-        width: IMAGE_MAX_WIDTH,
-        height: null,
-        fit: "inside",
-        withoutEnlargement: true,
-        kernel: sharp.kernel.lanczos3,
-      });
-    }
+    // 3) ดึง JPEG preview จาก NEF
+    logInfo("Extracting JPEG preview via exiftool ...", "ImageService");
+    const previewBuffer = await extractPreviewFromNEF(nefPath);
 
+    // 4) ให้ sharp หมุนตามมุมที่เราคำนวณเอง
+    let pipeline = sharp(previewBuffer).rotate(rotationDegrees);
+
+    const meta = await pipeline.metadata();
+    logInfo(
+      `Embedded JPEG preview (after rotate meta): ${meta.width}x${meta.height}, depth: ${meta.depth}`,
+      "ImageService"
+    );
+
+    // 5) Resize ถ้ากว้างเกิน
+    // if (meta.width && meta.width > IMAGE_MAX_WIDTH) {
+    //   pipeline = pipeline.resize({
+    //     width: IMAGE_MAX_WIDTH,
+    //     height: null,
+    //     fit: "inside",
+    //     withoutEnlargement: true,
+    //     kernel: sharp.kernel.lanczos3,
+    //   });
+    // }
+
+    // 6) แปลงเป็น JPEG
     const processedBuffer = await pipeline
       .jpeg({
         quality: JPEG_QUALITY,
@@ -161,6 +174,43 @@ async function convertNEFToJPG(buffer) {
     } catch (cleanupErr) {
       logInfo(`Cleanup temp NEF failed: ${cleanupErr.message}`, "ImageService");
     }
+  }
+}
+
+async function getOrientationFromNEF(nefPath) {
+  try {
+    // -Orientation# หรือ -Orientation -n เพื่อให้ได้ค่าตัวเลข
+    // -s3 = แสดงค่าอย่างเดียว (ไม่เอา label)
+    const { stdout } = await execFileAsync("exiftool", [
+      "-Orientation#",
+      "-n",
+      "-s3",
+      nefPath,
+    ]);
+
+    const raw = stdout.toString().trim();
+    if (!raw) return null;
+
+    const value = parseInt(raw, 10);
+    if (Number.isNaN(value)) return null;
+
+    return value; // 1,3,6,8, ...
+  } catch (err) {
+    // ถ้าหาค่าไม่ได้ก็ปล่อยไป ใช้ null
+    return null;
+  }
+}
+
+function orientationToDegrees(orientation) {
+  switch (orientation) {
+    case 3:
+      return 180;
+    case 6:
+      return 90;
+    case 8:
+      return 270;
+    default:
+      return 0;
   }
 }
 
