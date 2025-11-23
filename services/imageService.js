@@ -97,41 +97,45 @@ export async function processImage(file, filename) {
 async function convertNEFToJPG(buffer) {
   const tmpDir = os.tmpdir();
   const nefPath = path.join(tmpDir, `nef-${Date.now()}.nef`);
-  const jpgPath = nefPath.replace(/\.nef$/, ".jpg");
 
   const start = Date.now();
 
   try {
+    // 1) เซฟ NEF ชั่วคราว
     logInfo("Saving NEF to temp file ...", "ImageService");
     await fs.writeFile(nefPath, buffer);
 
-    // 1) ใช้ darktable-cli แปลง NEF → JPEG โดยตรง
-    // ตัวอย่าง options:
-    //   --hq false   : ปิด high quality processing เพื่อลดเวลาคำนวณ
-    //   --width/--height : บังคับ resize ตอน export ได้เลย (แล้วแต่ต้องการ)
-    logInfo("Starting RAW → JPEG via darktable-cli ...", "ImageService");
+    // 2) ใช้ exiftool ดึง embedded JPEG preview
+    //    -PreviewImage หรือ -JpgFromRaw แล้วแต่กล้อง / ฟอร์แมต
+    logInfo("Extracting JPEG preview via exiftool ...", "ImageService");
 
-    await execFileAsync("darktable-cli", [
-      nefPath, // input NEF
-      jpgPath, // output: ลงท้าย .jpg อยู่แล้ว → เป็น JPEG
-      "--hq",
-      "false", // ลดคุณภาพ processing ของ darktable ให้เร็วขึ้นหน่อย
-      // ถ้าอยากให้มัน resize ตอน export เลยก็ใช้:
-      // "--width", String(IMAGE_MAX_WIDTH),
-    ]);
-
-    logInfo(`darktable-cli finished, JPEG path: ${jpgPath}`, "ImageService");
-
-    // 2) อ่าน JPEG ที่ได้ด้วย sharp เพื่อจัดการต่อ (resize เพิ่ม, progressive ฯลฯ)
-    const jpegSharp = sharp(jpgPath);
-    const meta = await jpegSharp.metadata();
-
-    logInfo(
-      `Decoded JPEG from NEF: ${meta.width}x${meta.height}, depth: ${meta.depth}`,
-      "ImageService"
+    const { stdout } = await execFileAsync(
+      "exiftool",
+      [
+        "-b", // binary output
+        "-PreviewImage", // ถ้าไม่มีภาพ ลองเปลี่ยนเป็น "-JpgFromRaw"
+        nefPath,
+      ],
+      {
+        encoding: "buffer", // ให้ stdout เป็น Buffer
+        maxBuffer: 1024 * 1024 * 200, // กันไว้ 200MB เผื่อ preview ใหญ่
+      }
     );
 
-    let pipeline = jpegSharp;
+    const previewBuffer = stdout;
+
+    if (!previewBuffer || !previewBuffer.length) {
+      throw new Error("No embedded preview found in NEF");
+    }
+
+    // 3) ใช้ sharp จัดการ preview JPEG (resize / quality / progressive)
+    let pipeline = sharp(previewBuffer);
+    const meta = await pipeline.metadata();
+
+    logInfo(
+      `Embedded JPEG preview: ${meta.width}x${meta.height}, depth: ${meta.depth}`,
+      "ImageService"
+    );
 
     if (meta.width && meta.width > IMAGE_MAX_WIDTH) {
       pipeline = pipeline.resize({
@@ -157,12 +161,12 @@ async function convertNEFToJPG(buffer) {
 
     const finalMeta = await sharp(processedBuffer).metadata();
     logInfo(
-      `Final JPEG from NEF (after sharp): ${finalMeta.width}x${finalMeta.height}`,
+      `Final JPEG from NEF preview: ${finalMeta.width}x${finalMeta.height}`,
       "ImageService"
     );
 
     logInfo(
-      `NEF conversion (darktable-cli + sharp) took ${Date.now() - start}ms`,
+      `NEF preview conversion took ${Date.now() - start}ms`,
       "ImageService"
     );
 
@@ -174,15 +178,10 @@ async function convertNEFToJPG(buffer) {
     logError(error, "ImageService.convertNEFToJPG");
     throw new Error(`NEF conversion failed: ${error.message}`);
   } finally {
-    // ลบไฟล์ชั่วคราว
     try {
       await fs.rm(nefPath, { force: true });
-      await fs.rm(jpgPath, { force: true });
     } catch (cleanupErr) {
-      logInfo(
-        `Cleanup temp NEF/JPEG failed: ${cleanupErr.message}`,
-        "ImageService"
-      );
+      logInfo(`Cleanup temp NEF failed: ${cleanupErr.message}`, "ImageService");
     }
   }
 }
