@@ -105,33 +105,11 @@ async function convertNEFToJPG(buffer) {
     logInfo("Saving NEF to temp file ...", "ImageService");
     await fs.writeFile(nefPath, buffer);
 
-    // 2) ใช้ exiftool ดึง embedded JPEG preview
-    //    -PreviewImage หรือ -JpgFromRaw แล้วแต่กล้อง / ฟอร์แมต
     logInfo("Extracting JPEG preview via exiftool ...", "ImageService");
+    const previewBuffer = await extractPreviewFromNEF(nefPath);
 
-    const { stdout } = await execFileAsync(
-      "exiftool",
-      [
-        "-b", // binary output
-        "-PreviewImage", // ถ้าไม่มีภาพ ลองเปลี่ยนเป็น "-JpgFromRaw"
-        nefPath,
-      ],
-      {
-        encoding: "buffer", // ให้ stdout เป็น Buffer
-        maxBuffer: 1024 * 1024 * 200, // กันไว้ 200MB เผื่อ preview ใหญ่
-      }
-    );
-
-    const previewBuffer = stdout;
-
-    if (!previewBuffer || !previewBuffer.length) {
-      throw new Error("No embedded preview found in NEF");
-    }
-
-    // 3) ใช้ sharp จัดการ preview JPEG (resize / quality / progressive)
     let pipeline = sharp(previewBuffer);
     const meta = await pipeline.metadata();
-
     logInfo(
       `Embedded JPEG preview: ${meta.width}x${meta.height}, depth: ${meta.depth}`,
       "ImageService"
@@ -184,6 +162,34 @@ async function convertNEFToJPG(buffer) {
       logInfo(`Cleanup temp NEF failed: ${cleanupErr.message}`, "ImageService");
     }
   }
+}
+
+async function extractPreviewFromNEF(nefPath) {
+  // helper ใช้ซ้ำได้
+  async function runExiftool(tag) {
+    const { stdout } = await execFileAsync("exiftool", ["-b", tag, nefPath], {
+      encoding: "buffer",
+      maxBuffer: 1024 * 1024 * 200,
+    });
+    const buf = stdout;
+    return buf && buf.length ? buf : null;
+  }
+
+  // 1) พยายามดึง JpgFromRaw ก่อน (มักจะใหญ่กว่าหรือ full-size)
+  let buf = await runExiftool("-JpgFromRaw");
+  if (buf) {
+    logInfo("Using embedded JpgFromRaw as preview", "ImageService");
+    return buf;
+  }
+
+  // 2) ถ้าไม่มี ค่อย fallback เป็น PreviewImage (ส่วนมาก 640x424 แบบที่เจอ)
+  buf = await runExiftool("-PreviewImage");
+  if (buf) {
+    logInfo("Using embedded PreviewImage as preview", "ImageService");
+    return buf;
+  }
+
+  throw new Error("No embedded JPEG (JpgFromRaw/PreviewImage) found in NEF");
 }
 
 /**
