@@ -279,17 +279,6 @@ function generateGalleryHTML(eventCode, photos, totalPhotos, pagination) {
       <title>Foldex Photo Gallery - ${eventCode}</title>
       <script src="https://cdn.tailwindcss.com"></script>
       <style>
-        .photo-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-          gap: 1rem;
-        }
-        @media (max-width: 640px) {
-          .photo-grid {
-            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-            gap: 0.5rem;
-          }
-        }
         .modal {
           display: none;
           position: fixed;
@@ -326,10 +315,10 @@ function generateGalleryHTML(eventCode, photos, totalPhotos, pagination) {
         </header>
 
         <main>
-          <div class="photo-grid mb-8">
+          <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 mb-8">
             ${photos.map(photo => `
-              <div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-300">
-                <div class="aspect-square relative group cursor-pointer m-2 border rounded-lg overflow-hidden" onclick="openModal('${photo.displayUrl || photo.downloadUrl}')">
+              <div class="rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-300">
+                <div class="aspect-[3.6/2.4] sm:aspect-[3.6/2.4] relative group cursor-pointer rounded-lg overflow-hidden" onclick="openModal('${photo.displayUrl || photo.downloadUrl}')">
                   ${photo.displayUrl || photo.downloadUrl ? `
                     <img src="${photo.displayUrl || photo.downloadUrl}" alt="Photo ${photo.photoId}"
                         class="w-full h-full object-cover"
@@ -348,7 +337,7 @@ function generateGalleryHTML(eventCode, photos, totalPhotos, pagination) {
                     </div>
                   `}
                 </div>
-                <div class="p-3 flex justify-between items-center">
+                <div class="p-3 flex justify-between items-center hidden">
                   <div class="min-w-0 flex-1 mr-2">
                     <p class="text-xs text-gray-500 truncate" title="ID: ${photo.photoId}">ID: ${photo.photoId}</p>
                     <p class="text-xs text-gray-400 truncate" title="${photo.lastModified ? new Date(photo.lastModified).toLocaleString('th-TH') : ''}">
