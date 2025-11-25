@@ -4,7 +4,7 @@ import cors from 'cors';
  * CORS configuration options
  */
 const corsOptions = {
-  origin: '*', // Allow all origins (you might want to restrict this in production)
+  origin: ['*'], // Allow frontend and server origins
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Authorization', 'Content-Type', 'Cache-Control'],
   credentials: false, // Set to true if you need to handle credentials

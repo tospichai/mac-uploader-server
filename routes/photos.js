@@ -212,7 +212,6 @@ router.get('/:event_code/photos', asyncHandler(async (req, res) => {
  */
 router.get('/:event_code/photos/stream', corsForSSE, (req, res) => {
   const eventCode = req.params.event_code;
-
   logInfo(`New SSE connection for event: ${eventCode}`, 'PhotosRoute');
 
   // Set up SSE response
