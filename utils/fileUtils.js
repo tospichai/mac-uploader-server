@@ -65,3 +65,25 @@ export function extractPhotoIdFromS3Key(s3Key) {
   const fileName = keyParts[keyParts.length - 1];
   return fileName.split('_')[0];
 }
+
+/**
+ * Generate local path for photo
+ * @param {string} eventCode - The event code
+ * @param {string} photoId - The photo ID
+ * @param {string} type - The type ('original' or 'thumb')
+ * @returns {string} - The local file path
+ */
+export function generateLocalPath(eventCode, photoId, type) {
+  return `events/${eventCode}/${photoId}_${type}.jpg`;
+}
+
+/**
+ * Extract photo ID from local path
+ * @param {string} localPath - The local file path
+ * @returns {string} - The photo ID
+ */
+export function extractPhotoIdFromLocalPath(localPath) {
+  const pathParts = localPath.split('/');
+  const fileName = pathParts[pathParts.length - 1];
+  return fileName.split('_')[0];
+}

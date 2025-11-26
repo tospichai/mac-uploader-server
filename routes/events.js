@@ -5,8 +5,8 @@ import { asyncHandler } from '../middleware/errorHandler.js';
 import {
   getEventPhotos,
   generatePhotoUrls,
-  getS3Object
-} from '../services/s3Service.js';
+  getPhoto
+} from '../services/storageService.js';
 import {
   createSuccessResponse,
   createErrorResponse
@@ -66,11 +66,16 @@ router.get('/:eventCode/photos', asyncHandler(async (req, res) => {
   logInfo(`Fetching photos for event: ${eventCode}, page: ${page}`, 'EventsRoute');
 
   try {
-    // Get photos from S3
+    // Get photos from storage
     const photos = await getEventPhotos(eventCode);
 
+    // Generate base URL for local files
+    const protocol = req.protocol;
+    const host = req.get('host');
+    const baseUrl = `${protocol}://${host}`;
+
     // Generate URLs for photos
-    const photosWithUrls = await generatePhotoUrls(photos);
+    const photosWithUrls = await generatePhotoUrls(photos, baseUrl);
 
     // Apply pagination
     const totalPhotos = photosWithUrls.length;
@@ -134,8 +139,7 @@ router.get('/:eventCode/photos/:photoId', asyncHandler(async (req, res) => {
   logInfo(`Downloading photo: ${photoId} from event: ${eventCode}`, 'EventsRoute');
 
   try {
-    const key = `events/${eventCode}/${photoId}_original.jpg`;
-    const data = await getS3Object(key);
+    const data = await getPhoto(eventCode, photoId);
 
     // Read stream as buffer
     const chunks = [];

@@ -126,16 +126,19 @@ async function convertNEFToJPG(buffer) {
       "ImageService"
     );
 
-    // 5) Resize ถ้ากว้างเกิน
-    // if (meta.width && meta.width > IMAGE_MAX_WIDTH) {
-    //   pipeline = pipeline.resize({
-    //     width: IMAGE_MAX_WIDTH,
-    //     height: null,
-    //     fit: "inside",
-    //     withoutEnlargement: true,
-    //     kernel: sharp.kernel.lanczos3,
-    //   });
-    // }
+    // 5) Resize ถ้ากว้างเกิน 1024px
+    if (meta.width && meta.width > 1024) {
+      logInfo(`Resizing NEF preview from ${meta.width}px to 1024px`, "ImageService");
+      pipeline = pipeline.resize({
+        width: 1024,
+        height: null,
+        fit: "inside",
+        withoutEnlargement: true,
+        kernel: sharp.kernel.lanczos3,
+      });
+    } else {
+      logInfo(`NEF preview width is ${meta.width}px (<= 1024), no resize needed`, "ImageService");
+    }
 
     // 6) แปลงเป็น JPEG
     const processedBuffer = await pipeline
@@ -249,12 +252,23 @@ async function extractPreviewFromNEF(nefPath) {
  */
 async function convertToJPG(buffer) {
   try {
-    const processedBuffer = await sharp(buffer)
-      .resize({
-        width: IMAGE_MAX_WIDTH,
+    // Get metadata first to check dimensions
+    const metadata = await sharp(buffer).metadata();
+    let pipeline = sharp(buffer);
+
+    // Only resize if image is wider than 1024px
+    if (metadata.width && metadata.width > 1024) {
+      logInfo(`Resizing image from ${metadata.width}px to 1024px`, "ImageService");
+      pipeline = pipeline.resize({
+        width: 1024,
         height: null,
         withoutEnlargement: true,
-      })
+      });
+    } else {
+      logInfo(`Image width is ${metadata.width}px (<= 1024), no resize needed`, "ImageService");
+    }
+
+    const processedBuffer = await pipeline
       .jpeg({
         quality: JPEG_QUALITY,
         progressive: PROGRESSIVE_JPEG,

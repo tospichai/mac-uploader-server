@@ -39,6 +39,16 @@ app.use('/js', express.static(path.join(__dirname, 'public/js')));
 app.use('/css', express.static(path.join(__dirname, 'public/css')));
 app.use('/assets', express.static(path.join(__dirname, 'public/assets')));
 
+// Serve local files (only used in local mode) with CORS headers
+app.use('/api/files', (req, res, next) => {
+  // Add CORS headers for static file serving
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Headers", "Cache-Control");
+  res.header("Access-Control-Allow-Methods", "GET");
+  res.header("Cross-Origin-Resource-Policy", "cross-origin");
+  next();
+}, express.static(path.join(__dirname, 'uploads')));
+
 // Mount routes
 app.use('/', routes);
 

@@ -7,8 +7,15 @@ services:
     restart: unless-stopped
     ports:
       - "7001:7001"
+    volumes:
+      # Mount local storage directory (only used when UPLOAD_MODE=local)
+      - ./uploads:/app/uploads
     environment:
-      # AWS Configuration (REQUIRED)
+      # Storage Configuration
+      - UPLOAD_MODE=${UPLOAD_MODE:-s3}
+      - LOCAL_STORAGE_PATH=${LOCAL_STORAGE_PATH:-./uploads}
+
+      # AWS Configuration (REQUIRED for S3 mode)
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - AWS_REGION=${AWS_REGION:-ap-southeast-1}

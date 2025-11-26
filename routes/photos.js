@@ -1,18 +1,21 @@
 import express from 'express';
 import multer from 'multer';
 import { v4 as uuidv4 } from 'uuid';
+import path from 'path';
 import { validateApiKey } from '../middleware/auth.js';
 import { corsForSSE } from '../middleware/cors.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
+import { storageConfig } from '../config/index.js';
+import { isUsingLocal } from '../services/storageService.js';
 import {
   processImage
 } from '../services/imageService.js';
 import {
-  uploadPhotoToS3,
+  uploadPhoto,
   getEventPhotos,
   generatePhotoUrls,
-  getS3Object
-} from '../services/s3Service.js';
+  getPhoto
+} from '../services/storageService.js';
 import {
   addSSEConnection,
   setupSSEResponse,
@@ -84,23 +87,59 @@ router.post(
           logError(error, 'PhotosRoute.thumbnailProcessing');
           // Continue without thumbnail if processing fails
         }
+      } else {
+        // Generate thumbnail from original if not provided (for local storage mode)
+        try {
+          logInfo(`Generating thumbnail from original file`, 'PhotosRoute');
+          const { resizeImage, getImageMetadata } = await import('../services/imageService.js');
+
+          // Get image metadata to check dimensions
+          const metadata = await getImageMetadata(processedOriginal.buffer);
+          let thumbBuffer = processedOriginal.buffer;
+
+          // Only resize if image is wider than 1024px
+          if (metadata.width && metadata.width > 1024) {
+            logInfo(`Resizing image from ${metadata.width}px to 1024px`, 'PhotosRoute');
+            thumbBuffer = await resizeImage(processedOriginal.buffer, 1024, null, {
+              quality: 85,
+              fit: 'cover'
+            });
+          } else {
+            logInfo(`Image width is ${metadata.width}px (<= 1024), no resize needed`, 'PhotosRoute');
+          }
+
+          processedThumb = {
+            buffer: thumbBuffer,
+            mimetype: 'image/jpeg',
+            processed: metadata.width && metadata.width > 1024
+          };
+        } catch (error) {
+          logError(error, 'PhotosRoute.thumbnailGeneration');
+          // Continue without thumbnail if generation fails
+        }
       }
 
-      // Upload to S3
-      const uploadResult = await uploadPhotoToS3(
+      // Generate base URL for local files
+      const protocol = req.protocol;
+      const host = req.get('host');
+      const baseUrl = `${protocol}://${host}`;
+
+      // Upload to storage (S3 or local)
+      const uploadResult = await uploadPhoto(
         processedOriginal,
         processedThumb,
         eventCode,
-        photoId
+        photoId,
+        baseUrl
       );
 
       // Create photo data for response
       const photoUploadData = {
         photoId,
-        originalKey: uploadResult.originalKey,
-        thumbKey: uploadResult.thumbKey,
-        bucket: uploadResult.bucket,
-        region: uploadResult.region,
+        originalKey: uploadResult.originalKey || uploadResult.originalPath,
+        thumbKey: uploadResult.thumbKey || uploadResult.thumbPath,
+        bucket: uploadResult.bucket || null,
+        region: uploadResult.region || null,
         originalName,
         localPath,
         shotAt,
@@ -155,11 +194,16 @@ router.get('/:event_code/photos', asyncHandler(async (req, res) => {
   logInfo(`Fetching photos for event: ${eventCode}, page: ${page}`, 'PhotosRoute');
 
   try {
-    // Get photos from S3
+    // Get photos from storage
     const photos = await getEventPhotos(eventCode);
 
+    // Generate base URL for local files
+    const protocol = req.protocol;
+    const host = req.get('host');
+    const baseUrl = `${protocol}://${host}`;
+
     // Generate URLs for photos
-    const photosWithUrls = await generatePhotoUrls(photos);
+    const photosWithUrls = await generatePhotoUrls(photos, baseUrl);
 
     // Apply pagination
     const totalPhotos = photosWithUrls.length;
@@ -237,8 +281,7 @@ router.get('/:event_code/photos/:photoId', asyncHandler(async (req, res) => {
   logInfo(`Downloading photo: ${photoId} from event: ${eventCode}`, 'PhotosRoute');
 
   try {
-    const key = `events/${eventCode}/${photoId}_original.jpg`;
-    const data = await getS3Object(key);
+    const data = await getPhoto(eventCode, photoId);
 
     // Read stream as buffer
     const chunks = [];
@@ -262,6 +305,67 @@ router.get('/:event_code/photos/:photoId', asyncHandler(async (req, res) => {
     res.status(500).json(
       createErrorResponse(ERROR_MESSAGES.DOWNLOAD_FAILED, 500)
     );
+  }
+}));
+
+/**
+ * Serve local files endpoint (only for local storage mode)
+ * GET /api/files/*
+ */
+router.use('/api/files', asyncHandler(async (req, res, next) => {
+  // Only serve files if using local storage
+  if (!isUsingLocal()) {
+    return res.status(404).json(
+      createErrorResponse('File serving not available in S3 mode', 404)
+    );
+  }
+
+  // Extract file path from URL
+  const filePath = req.url.replace(/^\//, ''); // Remove leading slash
+
+  if (!filePath) {
+    return res.status(400).json(
+      createErrorResponse('File path is required', 400)
+    );
+  }
+
+  try {
+    const fullPath = path.join(storageConfig.localStoragePath, filePath);
+
+    // Security check - ensure the path is within the storage directory
+    const resolvedPath = path.resolve(fullPath);
+    const resolvedStoragePath = path.resolve(storageConfig.localStoragePath);
+
+    if (!resolvedPath.startsWith(resolvedStoragePath)) {
+      return res.status(403).json(
+        createErrorResponse('Access denied', 403)
+      );
+    }
+
+    // Set appropriate headers
+    res.setHeader('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+
+    // Send file
+    res.sendFile(resolvedPath, (err) => {
+      if (err) {
+        logError(err, `PhotosRoute.serveFile(${filePath})`);
+        if (!res.headersSent) {
+          res.status(404).json(
+            createErrorResponse('File not found', 404)
+          );
+        }
+      }
+    });
+
+  } catch (error) {
+    logError(error, `PhotosRoute.serveFile(${filePath})`);
+
+    if (!res.headersSent) {
+      res.status(500).json(
+        createErrorResponse('Error serving file', 500)
+      );
+    }
   }
 }));
 

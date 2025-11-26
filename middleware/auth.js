@@ -16,7 +16,8 @@ export function validateApiKey(req, res, next) {
 
   const apiKeyFromQuery = req.query.api_key;
   const apiKeyFromBody = req.body ? req.body.api_key : null;
-  const clientApiKey = apiKeyFromQuery || apiKeyFromBody || null;
+  const apiKeyFromHeader = req.headers['x-api-key'];
+  const clientApiKey = apiKeyFromQuery || apiKeyFromBody || apiKeyFromHeader || null;
 
   if (apiConfig.expectedApiKey && clientApiKey !== apiConfig.expectedApiKey) {
     return res.status(401).json(
