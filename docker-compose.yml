@@ -9,7 +9,7 @@ services:
       - "7001:7001"
     volumes:
       # Mount local storage directory (only used when UPLOAD_MODE=local)
-      - ./uploads:/app/uploads
+      - /volume1/docker/photo-uploader/uploads:/app/uploads
     environment:
       # Storage Configuration
       - UPLOAD_MODE=${UPLOAD_MODE:-s3}
