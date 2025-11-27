@@ -39,8 +39,8 @@ export function createPhotoUploadResponse(photoData) {
     s3: {
       original_key: photoData.originalKey,
       thumb_key: photoData.thumbKey,
-      bucket: photoData.bucket,
-      region: photoData.region
+      bucket: photoData.bucket || '',
+      region: photoData.region || ''
     },
     meta: {
       original_name: photoData.originalName,
