@@ -126,18 +126,18 @@ async function convertNEFToJPG(buffer) {
       "ImageService"
     );
 
-    // 5) Resize ถ้ากว้างเกิน 1024px
-    if (meta.width && meta.width > 1024) {
-      logInfo(`Resizing NEF preview from ${meta.width}px to 1024px`, "ImageService");
+    // 5) Resize ถ้ากว้างเกิน 2048px
+    if (meta.width && meta.width > 2048) {
+      logInfo(`Resizing NEF preview from ${meta.width}px to 2048px`, "ImageService");
       pipeline = pipeline.resize({
-        width: 1024,
+        width: 2048,
         height: null,
         fit: "inside",
         withoutEnlargement: true,
         kernel: sharp.kernel.lanczos3,
       });
     } else {
-      logInfo(`NEF preview width is ${meta.width}px (<= 1024), no resize needed`, "ImageService");
+      logInfo(`NEF preview width is ${meta.width}px (<= 2048), no resize needed`, "ImageService");
     }
 
     // 6) แปลงเป็น JPEG

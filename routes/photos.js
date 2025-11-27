@@ -29,7 +29,8 @@ import {
 } from '../utils/responseUtils.js';
 import {
   ERROR_MESSAGES,
-  PHOTOS_PER_PAGE
+  PHOTOS_PER_PAGE,
+  JPEG_QUALITY,
 } from '../config/constants.js';
 import { logInfo, logError } from '../middleware/logger.js';
 
@@ -101,7 +102,7 @@ router.post(
           if (metadata.width && metadata.width > 1024) {
             logInfo(`Resizing image from ${metadata.width}px to 1024px`, 'PhotosRoute');
             thumbBuffer = await resizeImage(processedOriginal.buffer, 1024, null, {
-              quality: 85,
+              quality: JPEG_QUALITY,
               fit: 'cover'
             });
           } else {
