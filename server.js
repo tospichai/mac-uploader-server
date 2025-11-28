@@ -3,6 +3,7 @@ import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { validateConfig, serverConfig } from './config/index.js';
+import { testDatabaseConnection } from './config/database.js';
 import { setupCors } from './middleware/cors.js';
 import { requestLogger } from './middleware/logger.js';
 import { globalErrorHandler, notFoundHandler } from './middleware/errorHandler.js';
@@ -12,11 +13,16 @@ import routes from './routes/index.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Validate configuration
-validateConfig();
+// Initialize server
+async function initializeServer() {
+  // Validate configuration
+  validateConfig();
 
-// Create Express app
-const app = express();
+  // Test database connection
+  await testDatabaseConnection();
+
+  // Create Express app
+  const app = express();
 
 // Setup middleware
 setupCors(app);
@@ -49,7 +55,7 @@ app.use('/api/files', (req, res, next) => {
   next();
 }, express.static(path.join(__dirname, 'uploads')));
 
-// Mount routes
+// Mount routes AFTER all middleware
 app.use('/', routes);
 
 // Handle 404 errors
@@ -58,31 +64,40 @@ app.use(notFoundHandler);
 // Global error handler
 app.use(globalErrorHandler);
 
-// Start server
-const PORT = serverConfig.port;
-const server = app.listen(PORT, () => {
-  console.log(`🚀 Photo upload server running on http://localhost:${PORT}`);
-  console.log(`📁 Environment: ${serverConfig.nodeEnv}`);
-  console.log(`🔧 API Key: ${process.env.EXPECTED_API_KEY ? 'Configured' : 'Not configured (using default)'}`);
-  console.log(`🪣 S3 Bucket: ${process.env.S3_BUCKET || 'khai-photo'}`);
-  console.log(`🌍 AWS Region: ${process.env.AWS_REGION || 'ap-southeast-1'}`);
-});
-
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('🛑 SIGTERM received, shutting down gracefully');
-  server.close(() => {
-    console.log('✅ Server closed');
-    process.exit(0);
+  // Start server
+  const PORT = serverConfig.port;
+  const server = app.listen(PORT, () => {
+    console.log(`🚀 Photo upload server running on http://localhost:${PORT}`);
+    console.log(`📁 Environment: ${serverConfig.nodeEnv}`);
+    console.log(`🔧 API Key: ${process.env.EXPECTED_API_KEY ? 'Configured' : 'Not configured (using default)'}`);
+    console.log(`🪣 S3 Bucket: ${process.env.S3_BUCKET || 'khai-photo'}`);
+    console.log(`🌍 AWS Region: ${process.env.AWS_REGION || 'ap-southeast-1'}`);
   });
-});
 
-process.on('SIGINT', () => {
-  console.log('🛑 SIGINT received, shutting down gracefully');
-  server.close(() => {
-    console.log('✅ Server closed');
-    process.exit(0);
+  // Graceful shutdown
+  process.on('SIGTERM', () => {
+    console.log('🛑 SIGTERM received, shutting down gracefully');
+    server.close(() => {
+      console.log('✅ Server closed');
+      process.exit(0);
+    });
   });
+
+  process.on('SIGINT', () => {
+    console.log('🛑 SIGINT received, shutting down gracefully');
+    server.close(() => {
+      console.log('✅ Server closed');
+      process.exit(0);
+    });
+  });
+
+  return app;
+}
+
+// Initialize the server
+const app = initializeServer().catch(error => {
+  console.error('❌ Failed to initialize server:', error);
+  process.exit(1);
 });
 
 // Handle unhandled promise rejections

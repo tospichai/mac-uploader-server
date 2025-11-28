@@ -28,6 +28,17 @@ export const apiConfig = {
   expectedApiKey: process.env.EXPECTED_API_KEY || 'your-app-api-key'
 };
 
+// Database configuration
+export const databaseConfig = {
+  url: process.env.DATABASE_URL
+};
+
+// JWT configuration
+export const jwtConfig = {
+  secret: process.env.JWT_SECRET || 'your-super-secret-jwt-key',
+  expiresIn: process.env.JWT_EXPIRES_IN || '7d'
+};
+
 // Initialize S3 client
 export const s3Client = new S3Client({
   region: s3Config.region,
@@ -57,10 +68,13 @@ export function validateConfig() {
     ];
   }
 
+  // Add database and JWT requirements
+  requiredVars.push('DATABASE_URL', 'JWT_SECRET');
+
   const missingVars = requiredVars.filter(varName => !process.env[varName]);
 
   if (missingVars.length > 0) {
-    console.error(`Missing required environment variables for ${uploadMode} mode: ${missingVars.join(', ')}`);
+    console.error(`Missing required environment variables: ${missingVars.join(', ')}`);
     process.exit(1);
   }
 
@@ -79,7 +93,13 @@ export function validateConfig() {
     console.warn('Warning: EXPECTED_API_KEY not set, using default value');
   }
 
+  if (process.env.JWT_SECRET === 'your-super-secret-jwt-key-change-this-in-production') {
+    console.warn('Warning: Using default JWT secret. Please change this in production!');
+  }
+
   console.log(`Storage mode: ${uploadMode}`);
+  console.log(`Database: Configured`);
+  console.log(`JWT: Configured`);
 }
 
 // Export all configurations for easy access

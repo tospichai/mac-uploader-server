@@ -29,7 +29,18 @@ export const ERROR_MESSAGES = {
   DOWNLOAD_FAILED: 'Download failed',
   EVENT_CODE_REQUIRED: 'eventCode query parameter is required',
   INVALID_RESPONSE: 'Invalid response from server',
-  DOWNLOAD_ERROR: 'ไม่สามารถดาวน์โหลดไฟล์ได้'
+  DOWNLOAD_ERROR: 'ไม่สามารถดาวน์โหลดไฟล์ได้',
+  // Authentication error messages
+  MISSING_AUTH_TOKEN: 'Authentication token is required',
+  INVALID_AUTH_TOKEN: 'Invalid authentication token',
+  USERNAME_EXISTS: 'Username already exists',
+  EMAIL_EXISTS: 'Email already exists',
+  INVALID_CREDENTIALS: 'Invalid username or password',
+  USER_NOT_FOUND: 'User not found',
+  USER_INACTIVE: 'User account is inactive',
+  VALIDATION_FAILED: 'Validation failed',
+  REGISTRATION_FAILED: 'Registration failed',
+  LOGIN_FAILED: 'Login failed'
 };
 
 // Success messages
