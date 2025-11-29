@@ -181,6 +181,12 @@ router.post(
         "AuthRoute"
       );
 
+      if (result.photographer.logoUrl) {
+        const protocol = req.protocol;
+        const host = req.get("host");
+        result.photographer.logoUrl = `${protocol}://${host}${result.photographer.logoUrl}`;
+      }
+
       res.json(
         createSuccessResponse({
           message: "Login successful",
