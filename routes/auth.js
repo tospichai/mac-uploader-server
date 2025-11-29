@@ -11,6 +11,7 @@ import {
   getPhotographerById,
   updatePhotographer,
   checkPhotographerExists,
+  generateApiKey,
 } from "../services/photographerService.js";
 import { validateRegistration, validateLogin } from "../utils/validation.js";
 import { generateToken } from "../utils/jwtUtils.js";
@@ -333,6 +334,46 @@ router.put(
       res
         .status(500)
         .json(createErrorResponse("Failed to update profile", 500));
+    }
+  })
+);
+
+/**
+ * Generate new API key for photographer
+ * POST /api/auth/generate-api-key
+ */
+router.post(
+  "/generate-api-key",
+  validateJwtToken,
+  asyncHandler(async (req, res) => {
+    const photographerId = req.photographer.id;
+
+    try {
+      const updatedPhotographer = await generateApiKey(photographerId);
+
+      logInfo(
+        `API key generated for photographer: ${updatedPhotographer.username}`,
+        "AuthRoute"
+      );
+
+      res.json(
+        createSuccessResponse({
+          message: "API key generated successfully",
+          apiKey: updatedPhotographer.apiKey,
+        })
+      );
+    } catch (error) {
+      logError(error, "AuthRoute.generateApiKey");
+
+      if (error.message === "Photographer not found") {
+        return res
+          .status(404)
+          .json(createErrorResponse(ERROR_MESSAGES.USER_NOT_FOUND, 404));
+      }
+
+      res
+        .status(500)
+        .json(createErrorResponse("Failed to generate API key", 500));
     }
   })
 );

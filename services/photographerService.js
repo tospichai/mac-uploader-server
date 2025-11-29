@@ -3,6 +3,7 @@ import { hashPassword, comparePassword } from "../utils/passwordUtils.js";
 import { generateToken } from "../utils/jwtUtils.js";
 import { v4 as uuidv4 } from "uuid";
 import { serverConfig } from "../config/index.js";
+import crypto from "crypto";
 
 const prisma = getPrismaClient();
 
@@ -299,6 +300,96 @@ export async function checkPhotographerExists(username, email) {
     };
   } catch (error) {
     throw new Error("Failed to check photographer existence: " + error.message);
+  }
+}
+
+/**
+ * Get photographer by API key
+ * @param {string} apiKey - API key to search for
+ * @returns {Object} Photographer data without password
+ */
+export async function getPhotographerByApiKey(apiKey) {
+  try {
+    const photographer = await prisma.photographer.findUnique({
+      where: { apiKey },
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        displayName: true,
+        logoUrl: true,
+        facebookUrl: true,
+        instagramUrl: true,
+        twitterUrl: true,
+        websiteUrl: true,
+        apiKey: true,
+        storageQuotaMb: true,
+        storageUsedMb: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    if (!photographer) {
+      throw new Error("Photographer not found");
+    }
+
+    if (!photographer.isActive) {
+      throw new Error("Photographer account is inactive");
+    }
+
+    return photographer;
+  } catch (error) {
+    if (
+      error.message === "Photographer not found" ||
+      error.message === "Photographer account is inactive"
+    ) {
+      throw error;
+    }
+    throw new Error("Failed to get photographer by API key: " + error.message);
+  }
+}
+
+/**
+ * Generate new API key for photographer
+ * @param {string} id - Photographer ID
+ * @returns {Object} Updated photographer with new API key
+ */
+export async function generateApiKey(id) {
+  try {
+    // Generate new unique API key
+    const newApiKey = crypto.randomBytes(32).toString("base64url");
+
+    // Update photographer with new API key
+    const photographer = await prisma.photographer.update({
+      where: { id },
+      data: { apiKey: newApiKey },
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        displayName: true,
+        logoUrl: true,
+        facebookUrl: true,
+        instagramUrl: true,
+        twitterUrl: true,
+        websiteUrl: true,
+        apiKey: true,
+        storageQuotaMb: true,
+        storageUsedMb: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    return photographer;
+  } catch (error) {
+    if (error.code === "P2025") {
+      throw new Error("Photographer not found");
+    }
+    throw new Error("Failed to generate API key: " + error.message);
   }
 }
 
