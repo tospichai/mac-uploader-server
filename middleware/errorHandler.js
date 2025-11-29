@@ -115,3 +115,12 @@ export function createNotFoundError(resource = 'Resource') {
 export function createUnauthorizedError(message = 'Unauthorized') {
   return new AppError(message, 401);
 }
+
+/**
+ * Create a forbidden error
+ * @param {string} message - Error message
+ * @returns {AppError} - Forbidden error instance
+ */
+export function createForbiddenError(message = 'Forbidden') {
+  return new AppError(message, 403);
+}

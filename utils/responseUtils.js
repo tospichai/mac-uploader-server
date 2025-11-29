@@ -31,9 +31,10 @@ export function createErrorResponse(message, statusCode = 500, details = {}) {
 /**
  * Create a photo upload response
  * @param {Object} photoData - Photo upload data
+ * @param {boolean} eventCreated - Whether event was created
  * @returns {Object} - Formatted photo upload response
  */
-export function createPhotoUploadResponse(photoData) {
+export function createPhotoUploadResponse(photoData, eventCreated = false) {
   return createSuccessResponse({
     photo_id: photoData.photoId,
     s3: {
@@ -49,7 +50,8 @@ export function createPhotoUploadResponse(photoData) {
       checksum: photoData.checksum,
       event_code: photoData.eventCode,
       processed: photoData.processed,
-      original_format: photoData.originalFormat || null
+      original_format: photoData.originalFormat || null,
+      event_created: eventCreated // Add event_created flag
     }
   }, 'Photo uploaded successfully');
 }

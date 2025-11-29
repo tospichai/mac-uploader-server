@@ -30,6 +30,9 @@ export function validateJwtToken(req, res, next) {
       email: decoded.email
     };
 
+    // Also attach as user for backward compatibility
+    req.user = req.photographer;
+
     next();
   } catch (error) {
     console.error('JWT validation error:', error.message);
@@ -67,6 +70,9 @@ export function validateJwtTokenOptional(req, res, next) {
         username: decoded.username,
         email: decoded.email
       };
+
+      // Also attach as user for backward compatibility
+      req.user = req.photographer;
     }
 
     next();
@@ -90,3 +96,6 @@ export function requireActivePhotographer(req, res, next) {
   // In a real implementation, you might want to check the database
   next();
 }
+
+// Export the main authentication middleware as jwtAuth
+export { validateJwtToken as jwtAuth };

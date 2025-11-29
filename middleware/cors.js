@@ -5,7 +5,7 @@ import cors from "cors";
  */
 const corsOptions = {
   origin: "*", // Allow frontend and server origins
-  methods: ["GET", "PUT", "POST", "OPTIONS"],
+  methods: ["GET", "PUT", "POST", "OPTIONS", "DELETE"],
   allowedHeaders: ["Authorization", "Content-Type", "Cache-Control"],
   credentials: false, // Set to true if you need to handle credentials
   optionsSuccessStatus: 200, // Some legacy browsers choke on 204

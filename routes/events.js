@@ -24,6 +24,13 @@ import {
   broadcastPhotoUpdate,
 } from "../services/sseService.js";
 import { processImage } from "../services/imageService.js";
+import { PrismaClient } from "@prisma/client";
+import {
+  findOrCreateEvent,
+  updateEventStats,
+} from "../services/eventService.js";
+
+const prisma = new PrismaClient();
 
 const router = express.Router();
 
@@ -45,6 +52,25 @@ router.post(
   asyncHandler(async (req, res) => {
     const eventCode = req.params.event_code || "unknown";
     logInfo(`Photo upload request for event: ${eventCode}`, "PhotosRoute");
+
+    // Find or create event using the new service
+    let event;
+    let wasEventCreated = false;
+
+    try {
+      const result = await findOrCreateEvent(eventCode, req.photographer.id);
+      event = result.event;
+      wasEventCreated = result.wasCreated;
+
+      if (wasEventCreated) {
+        logInfo(`New event created automatically: ${event.id}`, "PhotosRoute");
+      }
+    } catch (error) {
+      logError(error, "PhotosRoute.eventLookup");
+      return res
+        .status(500)
+        .json(createErrorResponse("Failed to find or create event", 500));
+    }
 
     // Extract files from request
     const originalFile = req.files?.original_file?.[0] || null;
@@ -110,7 +136,7 @@ router.post(
               1024,
               null,
               {
-                quality: JPEG_QUALITY,
+                quality: 85, // JPEG_QUALITY
                 fit: "cover",
               }
             );
@@ -137,14 +163,42 @@ router.post(
       const host = req.get("host");
       const baseUrl = `${protocol}://${host}`;
 
-      // Upload to storage (S3 or local)
+      // Upload to storage (S3 or local) - use event.folderName instead of eventCode
       const uploadResult = await uploadPhoto(
         processedOriginal,
         processedThumb,
-        eventCode,
+        event.folderName,
         photoId,
         baseUrl
       );
+
+      // Save photo to database
+      try {
+        await prisma.photo.create({
+          data: {
+            id: photoId,
+            eventId: event.id,
+            photographerId: req.photographer.id,
+            originalFilename: originalName,
+            originalPath: uploadResult.originalKey || uploadResult.originalPath,
+            thumbnailPath: uploadResult.thumbKey || uploadResult.thumbPath,
+            fileSizeBytes: processedOriginal.buffer.length,
+            width: processedOriginal.metadata?.width,
+            height: processedOriginal.metadata?.height,
+            format: processedOriginal.originalFormat,
+            checksum: checksum,
+            shotAt: shotAt ? new Date(shotAt) : null,
+          },
+        });
+
+        // Update event statistics
+        await updateEventStats(event.id, processedOriginal.buffer.length);
+
+        logInfo(`Photo ${photoId} saved to database`, "PhotosRoute");
+      } catch (dbError) {
+        logError(dbError, "PhotosRoute.databaseSave");
+        // Continue with response even if database save fails
+      }
 
       // Create photo data for response
       const photoUploadData = {
@@ -157,7 +211,7 @@ router.post(
         localPath,
         shotAt,
         checksum,
-        eventCode,
+        eventCode: event.folderName, // Use folderName from event
         processed: processedOriginal.processed,
         originalFormat: processedOriginal.originalFormat || null,
       };
@@ -174,10 +228,10 @@ router.post(
       });
 
       // Broadcast photo update to all connected clients
-      broadcastPhotoUpdate(eventCode, photoDataForSSE);
+      broadcastPhotoUpdate(event.folderName, photoDataForSSE);
 
-      // Return success response
-      res.json(createPhotoUploadResponse(photoUploadData));
+      // Return success response with event_created flag
+      res.json(createPhotoUploadResponse(photoUploadData, wasEventCreated));
     } catch (error) {
       logError(error, "PhotosRoute.photoUpload");
 
@@ -216,8 +270,21 @@ router.get(
     );
 
     try {
-      // Get photos from storage
-      const photos = await getEventPhotos(eventCode);
+      // Find event to get folderName
+      const event = await prisma.event.findFirst({
+        where: {
+          OR: [{ slug: eventCode }, { folderName: eventCode }],
+        },
+      });
+
+      if (!event) {
+        return res
+          .status(404)
+          .json(createErrorResponse("Event not found", 404));
+      }
+
+      // Get photos from storage using event.folderName
+      const photos = await getEventPhotos(event.folderName);
 
       // Generate base URL for local files
       const protocol = req.protocol;
@@ -268,19 +335,41 @@ router.get(
  * SSE endpoint for real-time photo updates
  * GET /api/events/:eventCode/photos/stream
  */
-router.get("/:eventCode/photos/stream", corsForSSE, (req, res) => {
-  const eventCode = req.params.eventCode;
+router.get(
+  "/:eventCode/photos/stream",
+  corsForSSE,
+  asyncHandler(async (req, res) => {
+    const eventCode = req.params.eventCode;
 
-  logInfo(`New SSE connection for event: ${eventCode}`, "EventsRoute");
+    logInfo(`New SSE connection for event: ${eventCode}`, "EventsRoute");
 
-  // Import moved to top level to avoid circular dependency
+    try {
+      // Find event to get folderName
+      const event = await prisma.event.findFirst({
+        where: {
+          OR: [{ slug: eventCode }, { folderName: eventCode }],
+        },
+      });
 
-  // Set up SSE response
-  setupSSEResponse(res);
+      if (!event) {
+        return res
+          .status(404)
+          .json(createErrorResponse("Event not found", 404));
+      }
 
-  // Add connection to SSE service
-  addSSEConnection(eventCode, res);
-});
+      // Set up SSE response
+      setupSSEResponse(res);
+
+      // Add connection to SSE service using event.folderName
+      addSSEConnection(event.folderName, res);
+    } catch (error) {
+      logError(error, "EventsRoute.sseConnection");
+      res
+        .status(500)
+        .json(createErrorResponse("Failed to establish SSE connection", 500));
+    }
+  })
+);
 
 /**
  * Get single photo
@@ -297,7 +386,20 @@ router.get(
     );
 
     try {
-      const data = await getPhoto(eventCode, photoId);
+      // Find event to get folderName
+      const event = await prisma.event.findFirst({
+        where: {
+          OR: [{ slug: eventCode }, { folderName: eventCode }],
+        },
+      });
+
+      if (!event) {
+        return res
+          .status(404)
+          .json(createErrorResponse("Event not found", 404));
+      }
+
+      const data = await getPhoto(event.folderName, photoId);
 
       // Read stream as buffer
       const chunks = [];

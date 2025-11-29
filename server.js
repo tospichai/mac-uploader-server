@@ -8,6 +8,7 @@ import { setupCors } from './middleware/cors.js';
 import { requestLogger } from './middleware/logger.js';
 import { globalErrorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import routes from './routes/index.js';
+import eventManagementRoutes from './routes/eventManagement.js';
 
 // Get current directory for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -57,6 +58,7 @@ app.use('/api/files', (req, res, next) => {
 
 // Mount routes AFTER all middleware
 app.use('/', routes);
+app.use('/api/events', eventManagementRoutes);
 
 // Handle 404 errors
 app.use(notFoundHandler);
