@@ -1,7 +1,8 @@
-import { getPrismaClient } from '../config/database.js';
-import { hashPassword, comparePassword } from '../utils/passwordUtils.js';
-import { generateToken } from '../utils/jwtUtils.js';
-import { v4 as uuidv4 } from 'uuid';
+import { getPrismaClient } from "../config/database.js";
+import { hashPassword, comparePassword } from "../utils/passwordUtils.js";
+import { generateToken } from "../utils/jwtUtils.js";
+import { v4 as uuidv4 } from "uuid";
+import { serverConfig } from "../config/index.js";
 
 const prisma = getPrismaClient();
 
@@ -21,14 +22,14 @@ export async function createPhotographer(photographerData) {
       facebookUrl,
       instagramUrl,
       twitterUrl,
-      websiteUrl
+      websiteUrl,
     } = photographerData;
 
     // Hash password
     const hashedPassword = await hashPassword(password);
 
     // Generate unique API key
-    const apiKey = `pk_${uuidv4().replace(/-/g, '')}`;
+    const apiKey = `pk_${uuidv4().replace(/-/g, "")}`;
 
     // Create photographer
     const photographer = await prisma.photographer.create({
@@ -42,8 +43,8 @@ export async function createPhotographer(photographerData) {
         instagramUrl,
         twitterUrl,
         websiteUrl,
-        apiKey
-      }
+        apiKey,
+      },
     });
 
     // Remove password from response
@@ -51,16 +52,16 @@ export async function createPhotographer(photographerData) {
 
     return photographerWithoutPassword;
   } catch (error) {
-    if (error.code === 'P2002') {
+    if (error.code === "P2002") {
       // Unique constraint violation
       const target = error.meta?.target;
-      if (target?.includes('username')) {
-        throw new Error('Username already exists');
-      } else if (target?.includes('email')) {
-        throw new Error('Email already exists');
+      if (target?.includes("username")) {
+        throw new Error("Username already exists");
+      } else if (target?.includes("email")) {
+        throw new Error("Email already exists");
       }
     }
-    throw new Error('Failed to create photographer: ' + error.message);
+    throw new Error("Failed to create photographer: " + error.message);
   }
 }
 
@@ -75,32 +76,32 @@ export async function authenticatePhotographer(usernameOrEmail, password) {
     // Find photographer by username or email
     const photographer = await prisma.photographer.findFirst({
       where: {
-        OR: [
-          { username: usernameOrEmail },
-          { email: usernameOrEmail }
-        ]
-      }
+        OR: [{ username: usernameOrEmail }, { email: usernameOrEmail }],
+      },
     });
 
     if (!photographer) {
-      throw new Error('Photographer not found');
+      throw new Error("Photographer not found");
     }
 
     if (!photographer.isActive) {
-      throw new Error('Photographer account is inactive');
+      throw new Error("Photographer account is inactive");
     }
 
     // Compare password
-    const isPasswordValid = await comparePassword(password, photographer.password);
+    const isPasswordValid = await comparePassword(
+      password,
+      photographer.password
+    );
     if (!isPasswordValid) {
-      throw new Error('Invalid password');
+      throw new Error("Invalid password");
     }
 
     // Generate JWT token
     const token = generateToken({
       photographerId: photographer.id,
       username: photographer.username,
-      email: photographer.email
+      email: photographer.email,
     });
 
     // Remove password from response
@@ -108,15 +109,17 @@ export async function authenticatePhotographer(usernameOrEmail, password) {
 
     return {
       photographer: photographerWithoutPassword,
-      token
+      token,
     };
   } catch (error) {
-    if (error.message === 'Photographer not found' ||
-        error.message === 'Invalid password' ||
-        error.message === 'Photographer account is inactive') {
+    if (
+      error.message === "Photographer not found" ||
+      error.message === "Invalid password" ||
+      error.message === "Photographer account is inactive"
+    ) {
       throw error;
     }
-    throw new Error('Authentication failed: ' + error.message);
+    throw new Error("Authentication failed: " + error.message);
   }
 }
 
@@ -125,7 +128,7 @@ export async function authenticatePhotographer(usernameOrEmail, password) {
  * @param {string} id - Photographer ID
  * @returns {Object} Photographer data without password
  */
-export async function getPhotographerById(id) {
+export async function getPhotographerById(id, req) {
   try {
     const photographer = await prisma.photographer.findUnique({
       where: { id },
@@ -144,20 +147,27 @@ export async function getPhotographerById(id) {
         storageUsedMb: true,
         isActive: true,
         createdAt: true,
-        updatedAt: true
-      }
+        updatedAt: true,
+      },
     });
 
     if (!photographer) {
-      throw new Error('Photographer not found');
+      throw new Error("Photographer not found");
+    }
+
+    // Add full URL to logoUrl if it exists
+    if (photographer.logoUrl) {
+      const protocol = req.protocol;
+      const host = req.get("host");
+      photographer.logoUrl = `${protocol}://${host}${photographer.logoUrl}`;
     }
 
     return photographer;
   } catch (error) {
-    if (error.message === 'Photographer not found') {
+    if (error.message === "Photographer not found") {
       throw error;
     }
-    throw new Error('Failed to get photographer: ' + error.message);
+    throw new Error("Failed to get photographer: " + error.message);
   }
 }
 
@@ -167,10 +177,20 @@ export async function getPhotographerById(id) {
  * @param {Object} updateData - Data to update
  * @returns {Object} Updated photographer data
  */
-export async function updatePhotographer(id, updateData) {
+export async function updatePhotographer(req, id, updateData) {
   try {
     // Remove sensitive fields that shouldn't be updated directly
-    const { password, apiKey, id: _, createdAt, ...safeUpdateData } = updateData;
+    const {
+      password,
+      apiKey,
+      id: _,
+      createdAt,
+      ...safeUpdateData
+    } = updateData;
+
+    if (!updateData.logoUrl) {
+      delete safeUpdateData.logoUrl;
+    }
 
     const photographer = await prisma.photographer.update({
       where: { id },
@@ -190,25 +210,32 @@ export async function updatePhotographer(id, updateData) {
         storageUsedMb: true,
         isActive: true,
         createdAt: true,
-        updatedAt: true
-      }
+        updatedAt: true,
+      },
     });
+
+    // Add full URL to logoUrl if it exists
+    if (photographer.logoUrl) {
+      const protocol = req.protocol;
+      const host = req.get("host");
+      photographer.logoUrl = `${protocol}://${host}${photographer.logoUrl}`;
+    }
 
     return photographer;
   } catch (error) {
-    if (error.code === 'P2002') {
+    if (error.code === "P2002") {
       // Unique constraint violation
       const target = error.meta?.target;
-      if (target?.includes('username')) {
-        throw new Error('Username already exists');
-      } else if (target?.includes('email')) {
-        throw new Error('Email already exists');
+      if (target?.includes("username")) {
+        throw new Error("Username already exists");
+      } else if (target?.includes("email")) {
+        throw new Error("Email already exists");
       }
     }
-    if (error.code === 'P2025') {
-      throw new Error('Photographer not found');
+    if (error.code === "P2025") {
+      throw new Error("Photographer not found");
     }
-    throw new Error('Failed to update photographer: ' + error.message);
+    throw new Error("Failed to update photographer: " + error.message);
   }
 }
 
@@ -224,12 +251,12 @@ export async function updatePhotographerPassword(id, newPassword) {
 
     await prisma.photographer.update({
       where: { id },
-      data: { password: hashedPassword }
+      data: { password: hashedPassword },
     });
 
     return true;
   } catch (error) {
-    throw new Error('Failed to update password: ' + error.message);
+    throw new Error("Failed to update password: " + error.message);
   }
 }
 
@@ -243,12 +270,12 @@ export async function updateStorageUsage(id, storageUsedMb) {
   try {
     await prisma.photographer.update({
       where: { id },
-      data: { storageUsedMb }
+      data: { storageUsedMb },
     });
 
     return true;
   } catch (error) {
-    throw new Error('Failed to update storage usage: ' + error.message);
+    throw new Error("Failed to update storage usage: " + error.message);
   }
 }
 
@@ -262,19 +289,16 @@ export async function checkPhotographerExists(username, email) {
   try {
     const existingPhotographer = await prisma.photographer.findFirst({
       where: {
-        OR: [
-          { username },
-          { email }
-        ]
-      }
+        OR: [{ username }, { email }],
+      },
     });
 
     return {
       usernameExists: existingPhotographer?.username === username,
-      emailExists: existingPhotographer?.email === email
+      emailExists: existingPhotographer?.email === email,
     };
   } catch (error) {
-    throw new Error('Failed to check photographer existence: ' + error.message);
+    throw new Error("Failed to check photographer existence: " + error.message);
   }
 }
 
